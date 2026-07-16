@@ -14,6 +14,8 @@ from collections_schema.validator import JsonSchemaValidator
 from collections_static.exporter import export_site
 from cyclopts import App
 
+from collections_cli.ingest import plan_upsert, resolve_slug
+
 DEFAULT_ROOT = Path("examples/collections")
 
 app = App(name="collections", help="Generic schema-driven collections platform.")
@@ -116,6 +118,55 @@ def export(*, out: Path = Path("dist"), root: Path = DEFAULT_ROOT) -> None:
     service = _service(root, read_only=True)
     export_site(service, out)
     print(f"exported static site to {out}")
+
+
+@app.command
+def ingest(
+    collection: str,
+    *,
+    data: str,
+    id: str | None = None,
+    yes: bool = False,
+    root: Path = DEFAULT_ROOT,
+) -> None:
+    """Create or update an item from JSON, validated against the schema.
+
+    Decides create vs. update by id, validates the result, prints a preview
+    (a field diff for updates), and asks for confirmation unless --yes is given.
+    Does not commit or push; publishing is a separate, explicit step.
+    """
+    service = _service(root, read_only=False)
+    payload = json.loads(data)
+    slug = resolve_slug(payload, id)
+    plan = plan_upsert(service, collection, slug, payload)
+
+    print(f"{plan.action} {collection}/{slug}")
+    if plan.action == "update":
+        if plan.changes:
+            print("changes:")
+            for line in plan.changes:
+                print(f"  {line}")
+        else:
+            print("  (no changes)")
+    else:
+        print(json.dumps(plan.target, indent=2, ensure_ascii=False))
+
+    if not yes and not _confirm():
+        print("aborted", file=sys.stderr)
+        raise SystemExit(1)
+
+    if plan.action == "create":
+        service.create_item(collection, {**payload, "id": slug})
+    else:
+        service.update_item(collection, slug, {k: v for k, v in payload.items() if k != "id"})
+    print(f"{plan.action}d {collection}/{slug}")
+
+
+def _confirm() -> bool:
+    try:
+        return input("Publish this? [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
 
 
 def main() -> None:
