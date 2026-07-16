@@ -10,6 +10,7 @@ dependencies = [
     "collections-schema",
     "collections-filesystem",
     "collections-rest",
+    "collections-static",
     "collections-cli",
 ]
 
@@ -33,6 +34,7 @@ collections-core = { workspace = true }
 collections-schema = { workspace = true }
 collections-filesystem = { workspace = true }
 collections-rest = { workspace = true }
+collections-static = { workspace = true }
 collections-cli = { workspace = true }
 
 [dependency-groups]

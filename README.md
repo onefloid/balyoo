@@ -31,7 +31,30 @@ uv run collections serve
 
 # Same API, read-only — writes return HTTP 405, reads still work
 uv run collections serve --read-only
+
+# Export a static, server-less site (JSON API mirror + minimal read-only UI)
+uv run collections export --root examples/collections --out dist
+python -m http.server -d dist 8080   # then open http://localhost:8080/
 ```
+
+## Static deployment (GitHub Pages)
+
+`collections export` produces a fully static site — no server, no database:
+
+- `dist/api/…` — JSON files whose layout mirrors the REST routes
+  (`collections.json`, `<c>/schema.json`, `<c>/items.json`, `<c>/items/<id>.json`),
+  so the same client works against a live server or a static host.
+- `dist/index.html` — a minimal, schema-driven, read-only browser (collection
+  list, table, client-side search, detail view). Exported with `read_only=True`,
+  so it advertises no write capabilities.
+
+Pushing to `main` runs [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml),
+which builds the site and deploys it to GitHub Pages.
+
+> **One-time setup:** in the repo, go to **Settings → Pages → Build and
+> deployment → Source** and select **GitHub Actions**. The site is then published
+> at `https://onefloid.github.io/balyoo/` (also triggerable via the workflow's
+> *Run workflow* button).
 
 ## How it fits together
 

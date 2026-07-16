@@ -10,6 +10,7 @@ members = [
     "collections-filesystem",
     "collections-rest",
     "collections-schema",
+    "collections-static",
 ]
 
 [[package]]
@@ -62,6 +63,7 @@ dependencies = [
     { name = "collections-filesystem" },
     { name = "collections-rest" },
     { name = "collections-schema" },
+    { name = "collections-static" },
 ]
 
 [package.dev-dependencies]
@@ -78,6 +80,7 @@ requires-dist = [
     { name = "collections-filesystem", editable = "packages/collections-filesystem" },
     { name = "collections-rest", editable = "packages/collections-rest" },
     { name = "collections-schema", editable = "packages/collections-schema" },
+    { name = "collections-static", editable = "packages/collections-static" },
 ]
 
 [package.metadata.requires-dev]
@@ -117,6 +120,7 @@ dependencies = [
     { name = "collections-filesystem" },
     { name = "collections-rest" },
     { name = "collections-schema" },
+    { name = "collections-static" },
     { name = "cyclopts" },
     { name = "uvicorn" },
 ]
@@ -127,6 +131,7 @@ requires-dist = [
     { name = "collections-filesystem", editable = "packages/collections-filesystem" },
     { name = "collections-rest", editable = "packages/collections-rest" },
     { name = "collections-schema", editable = "packages/collections-schema" },
+    { name = "collections-static", editable = "packages/collections-static" },
     { name = "cyclopts", specifier = ">=2.9" },
     { name = "uvicorn", specifier = ">=0.29" },
 ]
@@ -182,6 +187,17 @@ requires-dist = [
     { name = "collections-core", editable = "packages/collections-core" },
     { name = "jsonschema", specifier = ">=4.18" },
 ]
+
+[[package]]
+name = "collections-static"
+version = "0.1.0"
+source = { editable = "packages/collections-static" }
+dependencies = [
+    { name = "collections-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "collections-core", editable = "packages/collections-core" }]
 
 [[package]]
 name = "colorama"

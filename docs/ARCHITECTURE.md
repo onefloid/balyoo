@@ -28,6 +28,7 @@ core, not the other way around.
 | `collections-schema`       | `collections_schema`     | `JsonSchemaValidator` (implements `SchemaValidator`). |
 | `collections-filesystem`   | `collections_filesystem` | `FilesystemStorageProvider` — full CRUD + in-memory query/search. |
 | `collections-rest`         | `collections_rest`       | `create_app(service)` — fully generic FastAPI. |
+| `collections-static`       | `collections_static`     | Static site generator: JSON API mirror + minimal read-only UI. |
 | `collections-cli`          | `collections_cli`        | cyclopts CLI; composition layer that wires everything together. |
 
 Planned (placeholder directories exist): `collections-mcp`, `collections-ui` (TS),
@@ -91,3 +92,22 @@ collections/
 This is exactly what the filesystem provider reads and writes, and it is directly
 deployable as static files for read-only hosting (GitHub/Cloudflare/Netlify/Vercel
 Pages) without a server or database.
+
+### Static export (`collections-static`)
+
+`collections export` (→ `collections_static.export_site`) walks the service and
+writes a static site under `dist/`:
+
+- `dist/api/…` — a JSON mirror of the REST routes (`collections.json`,
+  `collections/<c>.json`, `<c>/schema.json`, `<c>/items.json`,
+  `<c>/items/<id>.json`). Index/manifest files let a client discover collections
+  and item ids without a directory listing. The bodies are `model_dump()` of the
+  same pydantic models the REST API returns, so the shape is identical.
+- `dist/{index.html,app.js,style.css}` — a minimal, zero-build, schema-driven
+  read-only UI that consumes the mirror. It is a small precursor of the deferred
+  `collections-ui` (TS); export runs with `read_only=True`, so capabilities report
+  no writes and the UI shows none.
+
+The generator only calls existing `CollectionsService` methods — no business logic
+is duplicated. `.github/workflows/deploy-pages.yml` runs the export and deploys
+`dist/` to GitHub Pages.
