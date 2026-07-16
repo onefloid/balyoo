@@ -56,6 +56,38 @@ which builds the site and deploys it to GitHub Pages.
 > at `https://onefloid.github.io/balyoo/` (also triggerable via the workflow's
 > *Run workflow* button).
 
+## AI ingestion (talk to Claude, publish an item)
+
+Describe an experience in natural language — even from the Claude mobile app at the
+bar — and have it turned into a valid item that goes live on the site:
+
+> *"I'm at a cozy little bar in Berlin, great cocktails, 5/5."* → Claude structures
+> it against the collection's schema, beautifies the text, previews it for you, and
+> on your confirmation commits + pushes → Pages redeploys → live.
+
+**Claude is the ingestion agent** — no OpenAI key and no server are needed for this
+flow. The repo ships a Claude skill (`.claude/skills/ingest-experience/`) that
+encodes the workflow, and a deterministic command that is the code-enforced safety
+gate:
+
+```bash
+# Create or update an item from JSON, validated against the schema (preview + confirm)
+uv run collections ingest books --data '{"title":"The Hobbit","author":"Tolkien","year":1937}'
+```
+
+`collections ingest` decides create vs. update by id, **validates against the JSON
+Schema** (invalid items are never written), and prints a preview — a field diff for
+updates — before asking to proceed. Claude produces the structured JSON; this
+command is the deterministic write gate.
+
+**Security & privacy.** The Pages site is public, so publishing is always a
+confirmed step (updates shown as a diff). Validation happens in code, not on trust.
+Beautified text is stored and rendered as plain text (no HTML/Markdown injection).
+No secrets go into items or the repo, and — because the static site can't safely
+hold an API key — the LLM step runs in Claude, never in the public browser. A
+provider-agnostic, OpenAI-compatible engine for *unattended* ingestion (without
+Claude in the loop) is planned but deliberately deferred.
+
 ## How it fits together
 
 ```
