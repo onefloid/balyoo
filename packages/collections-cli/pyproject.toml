@@ -1,0 +1,30 @@
+[project]
+name = "collections-cli"
+version = "0.1.0"
+description = "Command-line interface for the Collections platform."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "collections-core",
+    "collections-schema",
+    "collections-filesystem",
+    "collections-rest",
+    "cyclopts>=2.9",
+    "uvicorn>=0.29",
+]
+
+[project.scripts]
+collections = "collections_cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/collections_cli"]
+
+[tool.uv.sources]
+collections-core = { workspace = true }
+collections-schema = { workspace = true }
+collections-filesystem = { workspace = true }
+collections-rest = { workspace = true }

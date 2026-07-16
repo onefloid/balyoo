@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Book",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "author": { "type": "string" },
+    "year": { "type": "integer" },
+    "pages": { "type": "integer", "minimum": 1 },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["title"],
+  "additionalProperties": true
+}
