@@ -11,6 +11,7 @@ from collections_core.models import Query
 from collections_core.service import CollectionsService
 from collections_filesystem.provider import FilesystemStorageProvider
 from collections_schema.validator import JsonSchemaValidator
+from collections_static.exporter import export_site
 from cyclopts import App
 
 DEFAULT_ROOT = Path("examples/collections")
@@ -107,6 +108,14 @@ def serve(
 
     service = _service(root, read_only=read_only)
     uvicorn.run(create_app(service), host=host, port=port)
+
+
+@app.command
+def export(*, out: Path = Path("dist"), root: Path = DEFAULT_ROOT) -> None:
+    """Export a static, read-only site (JSON API mirror + minimal UI) to a directory."""
+    service = _service(root, read_only=True)
+    export_site(service, out)
+    print(f"exported static site to {out}")
 
 
 def main() -> None:

@@ -9,6 +9,7 @@ dependencies = [
     "collections-schema",
     "collections-filesystem",
     "collections-rest",
+    "collections-static",
     "cyclopts>=2.9",
     "uvicorn>=0.29",
 ]
@@ -28,3 +29,4 @@ collections-core = { workspace = true }
 collections-schema = { workspace = true }
 collections-filesystem = { workspace = true }
 collections-rest = { workspace = true }
+collections-static = { workspace = true }
