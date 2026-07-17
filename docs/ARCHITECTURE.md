@@ -116,9 +116,18 @@ UI, assembles it with the mirror, and deploys `dist/` to GitHub Pages.
 ## Web UI (`collections-ui`)
 
 A single React/Vite/TypeScript app, fully generic: every view — collection list,
-table with client-side search/sort, item detail, and **create/edit forms
-generated from JSON Schema** (via RJSF) — works for any collection. It depends only
-on the generic API.
+a **table** and a modern **card** view with client-side search/sort, item detail,
+and **create/edit forms generated from JSON Schema** (via RJSF) — works for any
+collection. It depends only on the generic API.
+
+**Schema-driven cards.** The card (tile) layout is chosen by an optional `x-card`
+block in the collection's schema (`title` / `subtitle` / `image` / `badges` /
+`fields`, each naming a property); when absent, `resolveCardConfig`
+(`packages/collections-ui/src/card.ts`) derives one — title from `title`/`name`,
+array fields as chips, remaining scalars as key/value rows. `x-card` is a custom
+keyword, ignored by JSON Schema validators, so it never affects data validation
+(it is also stripped before the schema reaches RJSF). The list/card choice is
+remembered in `localStorage`.
 
 **One build, many deployments.** A runtime `config.json` selects the data source:
 the live REST API (`{"apiBase": "", "static": false}`, full CRUD) or the static

@@ -10,5 +10,11 @@
     "genres": { "type": "array", "items": { "type": "string" } }
   },
   "required": ["title"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "x-card": {
+    "title": "title",
+    "subtitle": "director",
+    "badges": ["genres"],
+    "fields": ["year", "runtime"]
+  }
 }

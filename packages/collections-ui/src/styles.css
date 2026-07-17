@@ -273,3 +273,110 @@ form textarea {
   margin: 0.75rem 0;
   color: var(--danger);
 }
+
+/* List / Cards view toggle */
+.view-toggle {
+  display: inline-flex;
+  gap: 0;
+}
+.view-toggle .btn {
+  border-radius: 0;
+}
+.view-toggle .btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+.view-toggle .btn:last-child {
+  border-radius: 0 8px 8px 0;
+  border-left: none;
+}
+.view-toggle .btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Card (tile) grid */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+}
+.item-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  color: var(--fg);
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.item-card:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.08);
+}
+.item-card-thumb {
+  aspect-ratio: 16 / 9;
+  background: var(--bg);
+  overflow: hidden;
+}
+.item-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.item-card-body {
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.item-card-title {
+  font-weight: 650;
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+.item-card-subtitle {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.item-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.1rem;
+}
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.item-card-fields {
+  margin: 0.25rem 0 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.6rem;
+  font-size: 0.85rem;
+}
+.item-card-field {
+  display: contents;
+}
+.item-card-field dt {
+  color: var(--muted);
+}
+.item-card-field dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { resolveCardConfig } from "../card";
 import { useApi } from "../apiContext";
-import { useAsync } from "../hooks";
+import { usePersistentState, useAsync } from "../hooks";
 import type { Item } from "../types";
+import { ItemCard } from "./ItemCard";
 import { Breadcrumb, ErrorBox, formatCell, Loading, ReadOnlyBadge } from "./ui";
 
 type SortState = { field: string; dir: "asc" | "desc" };
@@ -29,6 +31,12 @@ export function CollectionView() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortState | null>(null);
+  const [view, setView] = usePersistentState("collections-ui:view", "list");
+
+  const cardConfig = useMemo(
+    () => (data ? resolveCardConfig(data[1]) : null),
+    [data],
+  );
 
   const columns = useMemo(() => {
     if (!data) return [];
@@ -95,6 +103,24 @@ export function CollectionView() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        <div className="view-toggle" role="group" aria-label="View mode">
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={view === "list"}
+            onClick={() => setView("list")}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={view === "cards"}
+            onClick={() => setView("cards")}
+          >
+            Cards
+          </button>
+        </div>
         {info.capabilities.supports_write && (
           <Link className="btn btn-primary" to={`/c/${encodeURIComponent(info.name)}/new`}>
             New item
@@ -102,42 +128,59 @@ export function CollectionView() {
         )}
       </div>
 
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>id</th>
-              {columns.map((col) => (
-                <th
-                  key={col}
-                  className="sortable"
-                  onClick={() => toggleSort(col)}
-                  title="Sort by this column"
-                >
-                  {col}
-                  {sortMark(col)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+      {view === "cards" && cardConfig ? (
+        rows.length === 0 ? (
+          <p className="muted">No matching items.</p>
+        ) : (
+          <div className="cards-grid">
             {rows.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <Link
-                    to={`/c/${encodeURIComponent(info.name)}/${encodeURIComponent(item.id)}`}
-                  >
-                    {item.id}
-                  </Link>
-                </td>
+              <ItemCard
+                key={item.id}
+                collection={info.name}
+                item={item}
+                config={cardConfig}
+              />
+            ))}
+          </div>
+        )
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>id</th>
                 {columns.map((col) => (
-                  <td key={col}>{formatCell(item.data[col])}</td>
+                  <th
+                    key={col}
+                    className="sortable"
+                    onClick={() => toggleSort(col)}
+                    title="Sort by this column"
+                  >
+                    {col}
+                    {sortMark(col)}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    <Link
+                      to={`/c/${encodeURIComponent(info.name)}/${encodeURIComponent(item.id)}`}
+                    >
+                      {item.id}
+                    </Link>
+                  </td>
+                  {columns.map((col) => (
+                    <td key={col}>{formatCell(item.data[col])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="count">
         {rows.length} of {page.total} shown
       </div>
