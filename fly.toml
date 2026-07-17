@@ -1,21 +1,26 @@
-# Fly.io deployment for the remote MCP server. Rename `app` and set secrets before
-# deploying (see packages/collections-mcp/README.md).
-app = "collections-mcp"
-primary_region = "fra"
+# fly.toml app configuration file generated for balyoo on 2026-07-17T20:07:27Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'balyoo'
+primary_region = 'ams'
 
 [build]
 
-[env]
-  # COLLECTIONS_MCP_TOKEN (the bearer secret) is set via `fly secrets set`.
+[[mounts]]
+  source = 'collections_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
-# Durable storage for the JSON collections; mounted at /data, used as /data/collections.
-[[mounts]]
-  source = "collections_data"
-  destination = "/data"
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 256
