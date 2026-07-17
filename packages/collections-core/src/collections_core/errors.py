@@ -40,5 +40,18 @@ class NotSupported(CollectionsError):
         super().__init__(f"Operation not supported: {operation!r}")
 
 
+class InvalidIdentifier(CollectionsError):
+    """Raised when a collection or item id is not a safe, single path segment.
+
+    Guards against path traversal (``..``, ``/``) and empty/reserved names when
+    an id is used to address stored data.
+    """
+
+    def __init__(self, kind: str, value: str) -> None:
+        self.kind = kind
+        self.value = value
+        super().__init__(f"Invalid {kind}: {value!r}")
+
+
 class Conflict(CollectionsError):
     """Raised when a write conflicts with existing state (e.g. duplicate id)."""
