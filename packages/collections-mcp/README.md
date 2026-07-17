@@ -40,33 +40,42 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-## Remote (HTTP + OAuth 2.1) — for cloud LLMs
+## Remote (HTTP + bearer token) — for cloud LLMs
 
 A cloud LLM can't launch a local process; it connects to a **URL** over the
-Streamable HTTP transport. `collections mcp --http` serves that, secured as an
-**OAuth 2.1 resource server**: an external OIDC identity provider issues tokens,
-this server only verifies the bearer JWT and maps its scopes to capabilities —
-**a valid token grants reads; the write scope grants writes** (reusing the same
-capability gating). The MCP endpoint is at `/mcp`; `/.well-known/oauth-protected-resource`
-advertises your identity provider so MCP clients can run the OAuth flow.
+Streamable HTTP transport. `collections mcp --http` serves that, protected by a
+**static bearer token** — no identity provider to set up. Set `COLLECTIONS_MCP_TOKEN`
+to a shared secret and every request to `/mcp` must carry
+`Authorization: Bearer <token>`; anything else gets a `401`. The MCP endpoint is at
+`/mcp`, and a public `/health` endpoint backs the platform health check.
+
+The token only gates access; **what** an authenticated caller may do comes from
+flags, not the token:
+
+| Flag | Effect |
+|---|---|
+| _(none)_ | read + create/update + delete |
+| `--read-only` | read tools only |
+| `--no-delete` | read + create/update, but no `delete_item` |
+| `--allow-anonymous` | serve `/mcp` without a token (no authentication) |
 
 Configure via environment:
 
 | Variable | Meaning |
 |---|---|
-| `COLLECTIONS_MCP_ISSUER` | OIDC issuer URL (your identity provider) |
-| `COLLECTIONS_MCP_RESOURCE_URL` | public URL of this server (the resource / audience) |
-| `COLLECTIONS_MCP_WRITE_SCOPE` | scope granting create/update (default `collections:write`) |
-| `COLLECTIONS_MCP_DELETE_SCOPE` | scope granting delete (default `collections:delete`) |
-| `COLLECTIONS_MCP_AUDIENCE` | token audience (default = resource URL) |
-| `COLLECTIONS_MCP_JWKS_URL` | JWKS URL (default: discovered from the issuer) |
+| `COLLECTIONS_MCP_TOKEN` | the bearer secret required on every `/mcp` request |
 
-You need an **OIDC identity provider** as the authorization server (Auth0 / WorkOS
-AuthKit / Stytch / Keycloak, …). The server is IdP-agnostic — pick one that
-supports **Dynamic Client Registration** for smooth client onboarding. Register the
-`collections:write` (and, for deletes, `collections:delete`) scope/permission and
-grant it to whoever may write. Pass `--per-user` to give each authenticated subject
-its own isolated collections (under `<root>/<hashed-subject>`).
+Generate a strong token with e.g. `openssl rand -hex 32`. Without either
+`COLLECTIONS_MCP_TOKEN` or `--allow-anonymous`, `--http` refuses to start.
+
+### Connecting a client
+
+- **Anthropic API MCP connector:** pass the token as `authorization_token`.
+- **Any client that lets you set headers:** send `Authorization: Bearer <token>`.
+- **claude.ai custom connector (web UI):** its connector flow is built around OAuth
+  or unauthenticated servers, so a static header may not be enterable there — for
+  that case deploy with `--allow-anonymous` (optionally `--read-only`) and rely on an
+  unguessable URL, or put the server behind your own gateway.
 
 ### Storage backends
 
@@ -87,16 +96,14 @@ The repo ships a `Dockerfile` and `fly.toml`; the container runs the MCP server 
 ```bash
 fly launch --no-deploy --copy-config      # rename the app in fly.toml
 fly volumes create collections_data --size 1
-fly secrets set \
-  COLLECTIONS_MCP_ISSUER=https://YOUR-IDP/ \
-  COLLECTIONS_MCP_RESOURCE_URL=https://YOUR-APP.fly.dev
+fly secrets set COLLECTIONS_MCP_TOKEN=$(openssl rand -hex 32)
 fly deploy
 
 # seed the (empty) database once, then it persists on the volume
 fly ssh console -C "/app/.venv/bin/collections migrate --root /app/examples/collections --db /data/collections.db"
 ```
 
-The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL (with the
-OAuth flow) in your LLM host — e.g. Anthropic's MCP connector or a Claude.ai custom
-connector. An empty database simply serves no collections until seeded.
+The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL in your LLM
+host along with the bearer token (see [Connecting a client](#connecting-a-client)
+above). An empty database simply serves no collections until seeded.
 

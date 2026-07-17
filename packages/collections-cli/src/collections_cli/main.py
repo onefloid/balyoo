@@ -157,7 +157,8 @@ def mcp(
     host: str = "127.0.0.1",
     port: int = 8080,
     read_only: bool = False,
-    per_user: bool = False,
+    no_delete: bool = False,
+    allow_anonymous: bool = False,
     db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
@@ -165,17 +166,11 @@ def mcp(
 
     Default transport is stdio (what a local host like Claude Desktop launches).
     Add --http to serve the remote Streamable HTTP transport for a cloud LLM,
-    secured as an OAuth 2.1 resource server. Pass --db <path> to use the durable
-    SQLite backend. With --per-user, each authenticated subject gets its own
-    isolated collections (a per-subject SQLite file, or a <root>/<hash> directory).
-    Configured via COLLECTIONS_MCP_* environment variables:
-
-      COLLECTIONS_MCP_ISSUER        OIDC issuer URL (the identity provider)
-      COLLECTIONS_MCP_RESOURCE_URL  public URL of this server (the resource)
-      COLLECTIONS_MCP_WRITE_SCOPE   scope granting create/update (default collections:write)
-      COLLECTIONS_MCP_DELETE_SCOPE  scope granting delete (default collections:delete)
-      COLLECTIONS_MCP_AUDIENCE      token audience (default = resource URL)
-      COLLECTIONS_MCP_JWKS_URL      JWKS URL (default: discovered from the issuer)
+    protected by a static bearer token: set COLLECTIONS_MCP_TOKEN and every request
+    to /mcp must send `Authorization: Bearer <token>`. Capabilities come from flags,
+    not the token: --read-only serves read tools only, --no-delete hides delete_item.
+    Pass --allow-anonymous to serve without a token (no authentication). Pass --db
+    <path> to use the durable SQLite backend instead of the filesystem root.
     """
     if not http:
         from collections_mcp.server import run_stdio
@@ -186,51 +181,19 @@ def mcp(
     import os
 
     import uvicorn
-    from collections_mcp.http import OAuthConfig, build_asgi_app
+    from collections_mcp.http import build_asgi_app
 
-    issuer = os.environ.get("COLLECTIONS_MCP_ISSUER")
-    resource = os.environ.get("COLLECTIONS_MCP_RESOURCE_URL")
-    if not issuer or not resource:
+    token = os.environ.get("COLLECTIONS_MCP_TOKEN")
+    if token is None and not allow_anonymous:
         print(
-            "error: --http requires COLLECTIONS_MCP_ISSUER and "
-            "COLLECTIONS_MCP_RESOURCE_URL",
+            "error: --http requires COLLECTIONS_MCP_TOKEN "
+            "(or pass --allow-anonymous to serve without authentication)",
             file=sys.stderr,
         )
         raise SystemExit(2)
 
-    oauth = OAuthConfig(
-        issuer_url=issuer,
-        resource_url=resource,
-        write_scope=os.environ.get("COLLECTIONS_MCP_WRITE_SCOPE", "collections:write"),
-        delete_scope=os.environ.get("COLLECTIONS_MCP_DELETE_SCOPE", "collections:delete"),
-        audience=os.environ.get("COLLECTIONS_MCP_AUDIENCE"),
-        jwks_url=os.environ.get("COLLECTIONS_MCP_JWKS_URL"),
-    )
-
-    import hashlib
-
-    # `read_only` here forces read-only regardless of token scope; otherwise the
-    # token's scopes decide read/write/delete per request. With --per-user the data
-    # root is namespaced by a hash of the subject (safe filesystem name, no
-    # traversal), isolating each user's collections.
-    def service_factory(
-        scope_read_only: bool, scope_no_delete: bool, subject: str | None
-    ) -> CollectionsService:
-        data_root, data_db = root, db
-        if per_user and subject:
-            digest = hashlib.sha256(subject.encode()).hexdigest()[:16]
-            if db is not None:
-                data_db = db.with_name(f"{db.stem}-{digest}{db.suffix or '.db'}")
-            else:
-                data_root = root / digest
-        return _service(
-            data_root,
-            read_only=read_only or scope_read_only,
-            deletable=not scope_no_delete,
-            db=data_db,
-        )
-
-    uvicorn.run(build_asgi_app(service_factory, oauth), host=host, port=port)
+    service = _service(root, read_only=read_only, deletable=not no_delete, db=db)
+    uvicorn.run(build_asgi_app(service, token=token), host=host, port=port)
 
 
 @app.command
