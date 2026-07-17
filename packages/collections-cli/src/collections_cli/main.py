@@ -118,6 +118,19 @@ def serve(
 
 
 @app.command
+def mcp(*, read_only: bool = False, root: Path = DEFAULT_ROOT) -> None:
+    """Serve collections over the Model Context Protocol (stdio).
+
+    Point an MCP host (e.g. Claude Desktop) at this command to let an assistant
+    read and write collections as tools. Add --read-only to expose read tools only.
+    """
+    from collections_mcp.server import run_stdio
+
+    service = _service(root, read_only=read_only)
+    run_stdio(service)
+
+
+@app.command
 def export(*, out: Path = Path("dist"), root: Path = DEFAULT_ROOT) -> None:
     """Export a static, read-only site (JSON API mirror + minimal UI) to a directory."""
     service = _service(root, read_only=True)

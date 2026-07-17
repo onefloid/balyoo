@@ -11,6 +11,7 @@ dependencies = [
     "collections-filesystem",
     "collections-rest",
     "collections-static",
+    "collections-mcp",
     "collections-cli",
 ]
 
@@ -21,7 +22,6 @@ package = false
 members = ["packages/*"]
 # Placeholder packages (planned, docs only) have no pyproject.toml yet.
 exclude = [
-    "packages/collections-mcp",
     "packages/collections-ui",
     "packages/collections-sqlite",
     "packages/collections-postgres",
@@ -35,6 +35,7 @@ collections-schema = { workspace = true }
 collections-filesystem = { workspace = true }
 collections-rest = { workspace = true }
 collections-static = { workspace = true }
+collections-mcp = { workspace = true }
 collections-cli = { workspace = true }
 
 [dependency-groups]

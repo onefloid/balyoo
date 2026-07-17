@@ -5,14 +5,14 @@
 Collections is a generic platform for storing, validating, searching and serving
 arbitrary structured objects — books, movies, employees, products, APIs, … You
 describe a collection with a JSON Schema, pick a storage provider, and the
-validation, CRUD, REST API and web UI (and, later, an MCP server) come for free.
+validation, CRUD, REST API, web UI and an MCP server come for free.
 
 > **Milestone 1 (this repo):** a working vertical slice in Python — core, schema
 > validation, a filesystem storage provider with full CRUD, a fully generic REST
 > API, and a CLI, with example collections. See
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and the
-> roadmap (MCP, SQLite/Postgres, pluggable search & auth). A generic React web UI
-> (`collections-ui`) is now included.
+> roadmap (SQLite/Postgres, pluggable search & auth). A generic React web UI
+> (`collections-ui`) and an MCP server (`collections-mcp`) are now included.
 
 ## Quick start
 
@@ -136,10 +136,35 @@ hold an API key — the LLM step runs in Claude, never in the public browser. A
 provider-agnostic, OpenAI-compatible engine for *unattended* ingestion (without
 Claude in the loop) is planned but deliberately deferred.
 
+## MCP server (talk to your collections from Claude Desktop)
+
+`collections mcp` serves every collection over the Model Context Protocol (stdio),
+so an AI assistant can read and write items as **tools** — with `create_<collection>`
+/ `update_<collection>` typed from each collection's JSON Schema, and writes hidden
+on a `--read-only` server. It's another adapter over the same service, so validation
+and capabilities are identical to the REST API.
+
+```bash
+uv run collections mcp --root examples/collections              # read-write
+uv run collections mcp --root examples/collections --read-only  # read tools only
+```
+
+Point an MCP host at it — e.g. in Claude Desktop's `claude_desktop_config.json`:
+
+```jsonc
+{ "mcpServers": { "collections": {
+  "command": "uv",
+  "args": ["run", "collections", "mcp", "--root", "/abs/path/to/collections"]
+} } }
+```
+
+See [`packages/collections-mcp/README.md`](packages/collections-mcp/README.md) for
+the full tool list.
+
 ## How it fits together
 
 ```
-    REST API / CLI / Web UI      (later: MCP server)
+  REST API / CLI / Web UI / MCP server
              │
         Collections Core        ← business logic; depends only on interfaces
              │
