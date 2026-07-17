@@ -78,6 +78,27 @@ def test_invalid_item_returns_422(examples_copy):
     assert "details" in response.json()
 
 
+@pytest.mark.parametrize(
+    "params",
+    [{"limit": 0}, {"limit": 99999}, {"offset": -1}, {"order": "sideways"}],
+)
+def test_out_of_range_query_params_return_422(examples_copy, params):
+    client = _client(examples_copy)
+    response = client.get("/collections/books/items", params=params)
+    assert response.status_code == 422
+
+
+def test_path_traversal_id_in_body_returns_400(examples_copy):
+    client = _client(examples_copy)
+    response = client.post(
+        "/collections/books/items",
+        json={"id": "../../../../tmp/evil", "title": "x"},
+    )
+    assert response.status_code == 400
+    # Nothing was written outside the collection.
+    assert not (examples_copy.parent.parent / "tmp" / "evil.json").exists()
+
+
 def test_duplicate_item_returns_409(examples_copy):
     client = _client(examples_copy)
     response = client.post(

@@ -61,6 +61,10 @@ class CollectionsService:
     # -- items -----------------------------------------------------------
     def list_items(self, collection: str, query: Query) -> Page[Item]:
         self._require("read")
+        # A query that filters or full-text searches needs the search capability;
+        # a plain listing only needs read.
+        if query.q or query.filters:
+            self._require("search")
         return self._provider.list_items(collection, query)
 
     def get_item(self, collection: str, item_id: str) -> Item:
@@ -69,7 +73,11 @@ class CollectionsService:
 
     def create_item(self, collection: str, data: dict[str, Any]) -> Item:
         self._require("write")
-        self._validate(collection, data)
+        # ``id`` is a filename/metadata hint the provider consumes to address the
+        # item; it is not stored content, so it must not be schema-validated
+        # (otherwise a strict ``additionalProperties: false`` schema would reject
+        # a create that a preview -- which never sees ``id`` -- reported as valid).
+        self._validate(collection, {k: v for k, v in data.items() if k != "id"})
         return self._provider.create_item(collection, data)
 
     def update_item(self, collection: str, item_id: str, patch: dict[str, Any]) -> Item:

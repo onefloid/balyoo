@@ -8,8 +8,31 @@ from pathlib import Path
 from typing import Any
 
 from collections_core.capabilities import Capabilities
-from collections_core.errors import CollectionNotFound, Conflict, ItemNotFound
+from collections_core.errors import (
+    CollectionNotFound,
+    Conflict,
+    InvalidIdentifier,
+    ItemNotFound,
+)
 from collections_core.models import Item, Page, Query
+
+
+def _safe_segment(kind: str, value: str) -> str:
+    """Return ``value`` if it is a single, safe path segment, else raise.
+
+    Ids reach the provider from request bodies, URLs and the CLI, and are used to
+    build filesystem paths. Rejecting empties, ``.``/``..`` and anything with a
+    path separator (or NUL) keeps a caller from escaping the collection directory.
+    """
+    if (
+        not value
+        or value in (".", "..")
+        or "/" in value
+        or "\\" in value
+        or "\0" in value
+    ):
+        raise InvalidIdentifier(kind, value)
+    return value
 
 
 class FilesystemStorageProvider:
@@ -34,13 +57,14 @@ class FilesystemStorageProvider:
 
     # -- layout helpers --------------------------------------------------
     def _collection_dir(self, collection: str) -> Path:
-        directory = self.root / collection
+        directory = self.root / _safe_segment("collection", collection)
         if not (directory / "schema.json").is_file():
             raise CollectionNotFound(collection)
         return directory
 
     def _item_path(self, collection: str, item_id: str) -> Path:
-        return self._collection_dir(collection) / "items" / f"{item_id}.json"
+        segment = _safe_segment("item id", item_id)
+        return self._collection_dir(collection) / "items" / f"{segment}.json"
 
     def _load_all(self, collection: str) -> list[Item]:
         items_dir = self._collection_dir(collection) / "items"
@@ -129,11 +153,9 @@ class FilesystemStorageProvider:
         if not query.sort:
             return items
         field = query.sort
-        # (value is None, value) keeps missing values grouped together so that
-        # None is never compared against a typed value.
         return sorted(
             items,
-            key=lambda item: (item.data.get(field) is None, item.data.get(field)),
+            key=lambda item: _sort_key(item.data.get(field)),
             reverse=query.order == "desc",
         )
 
@@ -142,6 +164,25 @@ class FilesystemStorageProvider:
         path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
+
+
+def _sort_key(value: Any) -> tuple[int, Any]:
+    """A total, type-safe sort key so heterogeneous field values never crash.
+
+    Values are bucketed by type rank first, so different types are never compared
+    against each other; within a bucket the natural value orders as expected.
+    Unorderable values (lists, dicts) fall back to a stable JSON string, and
+    missing/None values sort last on ascending (matching the previous behaviour).
+    """
+    if value is None:
+        return (4, "")
+    if isinstance(value, bool):
+        return (0, int(value))
+    if isinstance(value, (int, float)):
+        return (1, value)
+    if isinstance(value, str):
+        return (2, value)
+    return (3, json.dumps(value, sort_keys=True, ensure_ascii=False, default=str))
 
 
 def _contains(data: dict[str, Any], needle: str) -> bool:

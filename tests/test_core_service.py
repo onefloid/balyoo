@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from collections_core.capabilities import Capabilities
 from collections_core.errors import NotSupported, SchemaValidationError
 from collections_core.models import Query
 from collections_core.service import CollectionsService
@@ -60,3 +61,32 @@ def test_update_validates_merged_result(book_schema):
     with pytest.raises(SchemaValidationError):
         # Overwriting title with a non-string must fail against the merged object.
         service.update_item("books", "dune", {"title": 123})
+
+
+def test_create_does_not_validate_the_id_hint(book_schema):
+    # A strict schema (additionalProperties: false) must still accept a create
+    # that carries an ``id`` filename hint, because ``id`` is not stored content.
+    strict = {**book_schema, "additionalProperties": False}
+    service = _service(strict)
+    item = service.create_item("books", {"id": "hobbit", "title": "The Hobbit"})
+    assert item.id == "hobbit"
+
+
+def test_search_requires_search_capability(book_schema):
+    provider = InMemoryProvider(
+        schemas={"books": book_schema},
+        items={"books": {"dune": {"title": "Dune"}}},
+        capabilities=Capabilities(
+            supports_read=True, supports_write=False,
+            supports_delete=False, supports_search=False,
+        ),
+    )
+    service = CollectionsService(provider, JsonSchemaValidator())
+
+    # Plain listing needs only read and still works.
+    assert service.list_items("books", Query()).total == 1
+    # But a full-text query or a filter needs the (absent) search capability.
+    with pytest.raises(NotSupported):
+        service.list_items("books", Query(q="dune"))
+    with pytest.raises(NotSupported):
+        service.list_items("books", Query(filters={"title": "Dune"}))

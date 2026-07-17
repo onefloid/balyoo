@@ -13,6 +13,7 @@ from typing import Any
 from collections_core.errors import (
     CollectionNotFound,
     Conflict,
+    InvalidIdentifier,
     ItemNotFound,
     NotSupported,
     SchemaValidationError,
@@ -20,6 +21,7 @@ from collections_core.errors import (
 from collections_core.models import Query
 from collections_core.service import CollectionsService
 from fastapi import FastAPI, Request
+from fastapi import Query as QueryParam
 from fastapi.responses import JSONResponse, Response
 
 _RESERVED_PARAMS = {"limit", "offset", "sort", "order", "q"}
@@ -49,10 +51,10 @@ def create_app(service: CollectionsService) -> FastAPI:
     def list_items(
         collection: str,
         request: Request,
-        limit: int = 50,
-        offset: int = 0,
+        limit: int = QueryParam(50, ge=1, le=1000),
+        offset: int = QueryParam(0, ge=0),
         sort: str | None = None,
-        order: str = "asc",
+        order: str = QueryParam("asc", pattern="^(asc|desc)$"),
         q: str | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -91,6 +93,9 @@ def _register_error_handlers(app: FastAPI) -> None:
     def not_found(_: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(status_code=404, content={"error": str(exc)})
 
+    def bad_request(_: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
     def not_supported(_: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(status_code=405, content={"error": str(exc)})
 
@@ -105,6 +110,7 @@ def _register_error_handlers(app: FastAPI) -> None:
 
     app.add_exception_handler(CollectionNotFound, not_found)
     app.add_exception_handler(ItemNotFound, not_found)
+    app.add_exception_handler(InvalidIdentifier, bad_request)
     app.add_exception_handler(NotSupported, not_supported)
     app.add_exception_handler(Conflict, conflict)
     app.add_exception_handler(SchemaValidationError, validation_failed)
