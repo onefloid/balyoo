@@ -122,3 +122,21 @@ def test_read_only_blocks_writes_with_405(examples_copy, method, url, body):
 
     # Reads on the very same API still work.
     assert client.get("/collections/books/items/dune").status_code == 200
+
+
+def test_serves_ui_bundle_alongside_api(examples_copy, tmp_path):
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><title>UI</title>", encoding="utf-8")
+    (ui / "config.json").write_text('{"apiBase": "", "static": false}', encoding="utf-8")
+
+    service = CollectionsService(
+        FilesystemStorageProvider(examples_copy), JsonSchemaValidator()
+    )
+    client = TestClient(create_app(service, ui_dir=ui))
+
+    # UI served from the same origin as the API...
+    assert client.get("/").text.startswith("<!doctype html>")
+    assert client.get("/config.json").json() == {"apiBase": "", "static": False}
+    # ...without shadowing the API routes.
+    assert client.get("/collections/books/items/dune").status_code == 200

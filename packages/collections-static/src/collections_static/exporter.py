@@ -12,24 +12,32 @@ server or a static host::
 Content is produced via ``model_dump()`` of the existing pydantic models, so it is
 byte-for-byte the shape the REST API returns. Nothing here re-implements business
 logic -- it only calls the service.
+
+The UI itself is the built ``collections-ui`` bundle, laid down separately (by the
+Pages workflow); this exporter only produces the JSON mirror plus a ``config.json``
+that points the UI at ``api/`` in read-only static mode. Existing files in the
+output directory (e.g. a UI build already placed there) are left untouched.
 """
 
 from __future__ import annotations
 
 import json
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
 from collections_core.models import Item, Query
 from collections_core.service import CollectionsService
 
-_ASSET_FILES = ("index.html", "app.js", "style.css")
 _PAGE_SIZE = 1000  # Query.limit is capped at 1000; paginate for larger collections.
+
+# Consumed by collections-ui at runtime: read the mirror under api/ with GET-only,
+# `.json`-suffixed requests. One build of the UI serves both this static deployment
+# and a live read-write server (which ships its own config.json).
+_STATIC_CONFIG = {"apiBase": "api/", "static": True}
 
 
 def export_site(service: CollectionsService, out_dir: str | Path) -> None:
-    """Write the static API mirror and the read-only UI into ``out_dir``."""
+    """Write the static API mirror and the UI runtime config into ``out_dir``."""
     out = Path(out_dir)
     api = out / "api"
 
@@ -51,7 +59,7 @@ def export_site(service: CollectionsService, out_dir: str | Path) -> None:
         for item in items:
             _write_json(base / name / "items" / f"{item.id}.json", item.model_dump())
 
-    _copy_assets(out)
+    _write_json(out / "config.json", _STATIC_CONFIG)
 
 
 def _all_items(service: CollectionsService, collection: str) -> list[Item]:
@@ -64,14 +72,6 @@ def _all_items(service: CollectionsService, collection: str) -> list[Item]:
         offset += len(page.items)
         if not page.items or offset >= page.total:
             return items
-
-
-def _copy_assets(out: Path) -> None:
-    assets = files("collections_static") / "assets"
-    for name in _ASSET_FILES:
-        (out / name).write_text(
-            (assets / name).read_text(encoding="utf-8"), encoding="utf-8"
-        )
 
 
 def _write_json(path: Path, data: Any) -> None:

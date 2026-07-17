@@ -102,14 +102,19 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8000,
     read_only: bool = False,
+    ui: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
-    """Serve the generic REST API (add --read-only to mask writes)."""
+    """Serve the generic REST API (add --read-only to mask writes).
+
+    Pass --ui <dir> with a built collections-ui bundle to also serve the web UI
+    from the same origin (no separate host, no CORS).
+    """
     import uvicorn
     from collections_rest.app import create_app
 
     service = _service(root, read_only=read_only)
-    uvicorn.run(create_app(service), host=host, port=port)
+    uvicorn.run(create_app(service, ui_dir=ui), host=host, port=port)
 
 
 @app.command
