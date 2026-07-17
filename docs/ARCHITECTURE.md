@@ -7,7 +7,7 @@ specific use case (books, movies, …) — everything is driven by JSON Schema.
 ## Layers
 
 ```
-        REST API · Web UI        (later: MCP server, …)
+    REST API · Web UI · MCP server
              │
         Collections Core            ← business logic only; knows only interfaces
              │
@@ -28,13 +28,13 @@ core, not the other way around.
 | `collections-schema`       | `collections_schema`     | `JsonSchemaValidator` (implements `SchemaValidator`). |
 | `collections-filesystem`   | `collections_filesystem` | `FilesystemStorageProvider` — full CRUD + in-memory query/search. |
 | `collections-rest`         | `collections_rest`       | `create_app(service)` — fully generic FastAPI. |
+| `collections-mcp`          | `collections_mcp`        | MCP server (stdio) exposing every collection as tools, generated from schemas. |
 | `collections-static`       | `collections_static`     | Static export: JSON API mirror + a `config.json` for the UI. |
 | `collections-ui`           | `collections_ui` (TS)    | Generic React/Vite frontend: table, search, detail, schema-generated create/edit (RJSF). The one TypeScript package. |
 | `collections-cli`          | `collections_cli`        | cyclopts CLI; composition layer that wires everything together. |
 
-Planned (placeholder directories exist): `collections-mcp`,
-`collections-sqlite`, `collections-postgres`, `collections-search-lunr`,
-`collections-auth-basic`.
+Planned (placeholder directories exist): `collections-sqlite`,
+`collections-postgres`, `collections-search-lunr`, `collections-auth-basic`.
 
 ## Key ideas
 
@@ -74,6 +74,27 @@ DELETE /collections/{c}/items/{id}
 Domain errors map to HTTP status codes in `collections_rest.app`:
 `CollectionNotFound`/`ItemNotFound` → 404, `SchemaValidationError` → 422 (with a
 `details` list), `NotSupported` → 405, `Conflict` → 409.
+
+## MCP server
+
+`collections-mcp` exposes the same platform to AI assistants over the Model Context
+Protocol (stdio; launched by `collections mcp`). It is another adapter over
+`CollectionsService` — no business logic is duplicated — and the tool set is
+**generated from the platform**:
+
+- Generic reads: `list_collections`, `get_schema`, `list_items` (`q`/sort/paginate),
+  `get_item`.
+- Per collection, `create_<c>` / `update_<c>` whose **input schema is the
+  collection's JSON Schema** (presentation keywords `$schema`/`x-card`/`x-collection`
+  stripped; update relaxes `required` to just `id`). This is what MCP adds over
+  REST: the assistant gets typed, validated write tools instead of an opaque blob.
+- `delete_item`.
+
+The tool logic is transport-agnostic (`build_tools` / `dispatch` in
+`collections_mcp.server`) and unit-tested without a live client. Writes are
+advertised only when capabilities allow (`--read-only` ⇒ read tools only), the same
+capability rule the REST API and UI follow. Domain errors become `isError` tool
+results carrying the message (and a `SchemaValidationError`'s field list).
 
 ## Static-first data layout
 

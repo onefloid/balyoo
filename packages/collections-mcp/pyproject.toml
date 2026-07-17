@@ -1,0 +1,20 @@
+[project]
+name = "collections-mcp"
+version = "0.1.0"
+description = "Auto-generated MCP server for the Collections platform."
+requires-python = ">=3.11"
+license = "Apache-2.0"
+dependencies = [
+    "collections-core",
+    "mcp>=1.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/collections_mcp"]
+
+[tool.uv.sources]
+collections-core = { workspace = true }
