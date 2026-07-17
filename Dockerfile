@@ -20,9 +20,10 @@ COPY docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Collections data lives on a mounted volume (see fly.toml); OAuth settings come
-# from COLLECTIONS_MCP_* env / secrets. The server is read-only until a token
-# carries the write (and, for delete, delete) scope. Run the venv binary directly
-# so no uv re-sync is attempted as the unprivileged user.
+# Data is the durable SQLite database on the mounted volume (see fly.toml); OAuth
+# settings come from COLLECTIONS_MCP_* env / secrets. The server is read-only until
+# a token carries the write (and, for delete, delete) scope. Run the venv binary
+# directly so no uv re-sync is attempted as the unprivileged user. Seed the empty
+# database with `collections migrate` (see packages/collections-mcp/README.md).
 CMD ["/app/.venv/bin/collections", "mcp", "--http", \
-     "--host", "0.0.0.0", "--port", "8080", "--root", "/data/collections"]
+     "--host", "0.0.0.0", "--port", "8080", "--db", "/data/collections.db"]

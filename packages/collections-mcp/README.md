@@ -68,9 +68,21 @@ supports **Dynamic Client Registration** for smooth client onboarding. Register 
 grant it to whoever may write. Pass `--per-user` to give each authenticated subject
 its own isolated collections (under `<root>/<hashed-subject>`).
 
+### Storage backends
+
+Both the REST server and the MCP server take `--db <path>` to use the durable,
+transactional **SQLite** backend instead of a filesystem root. Seed a SQLite
+database from an existing filesystem layout with `collections migrate`:
+
+```bash
+collections migrate --root examples/collections --db collections.db   # idempotent
+collections mcp --http --db collections.db ...
+```
+
 ### Deploy to Fly.io
 
-The repo ships a `Dockerfile` and `fly.toml` (durable volume for the data):
+The repo ships a `Dockerfile` and `fly.toml`; the container runs the MCP server on
+**SQLite** at `/data/collections.db` (a durable volume):
 
 ```bash
 fly launch --no-deploy --copy-config      # rename the app in fly.toml
@@ -79,10 +91,12 @@ fly secrets set \
   COLLECTIONS_MCP_ISSUER=https://YOUR-IDP/ \
   COLLECTIONS_MCP_RESOURCE_URL=https://YOUR-APP.fly.dev
 fly deploy
+
+# seed the (empty) database once, then it persists on the volume
+fly ssh console -C "/app/.venv/bin/collections migrate --root /app/examples/collections --db /data/collections.db"
 ```
 
-The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL (with
-the OAuth flow) in your LLM host — e.g. Anthropic's MCP connector or a Claude.ai
-custom connector. Seed the volume with your collections (`fly ssh console`, or copy
-your `schema.json`/`items` layout) — an empty data root simply serves no collections.
+The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL (with the
+OAuth flow) in your LLM host — e.g. Anthropic's MCP connector or a Claude.ai custom
+connector. An empty database simply serves no collections until seeded.
 
