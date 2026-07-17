@@ -126,11 +126,10 @@ fly secrets set \
 ```
 
 Then, in the app's connector setup screen, paste in the Client ID and Client
-Secret you just set. If you ever see an `invalid_scope` error during the OAuth
-handshake, that means the connector sent an OAuth `scope` this server didn't
-expect — capabilities here are controlled by the `--read-only`/`--no-delete` flags
-above, not by OAuth scopes, so this is safe to ignore or investigate on a
-case-by-case basis.
+Secret you just set. If the setup screen also asks for a "scope" (e.g. a default
+or base scope) it doesn't matter what you enter, or whether you leave it blank —
+capabilities here are controlled by the `--read-only`/`--no-delete` flags above,
+not by OAuth scopes, and this server accepts any scope a connector sends.
 
 ### Storage backends
 

@@ -128,6 +128,22 @@ class OAuthConfig:
     public_url: str  # this server's own https:// base URL; used as issuer + resource
 
 
+class _PermissiveClientInformation(OAuthClientInformationFull):
+    """An ``OAuthClientInformationFull`` that accepts any requested scope.
+
+    This server gates capabilities via CLI flags (``--read-only``/``--no-delete``)
+    at startup, not OAuth scopes — the client isn't registered with a fixed scope
+    string, so the SDK's default ``validate_scope`` (which rejects anything not in
+    that string) would otherwise fail the handshake for no functional reason
+    whenever a connector sends a `scope` at all, regardless of *what* it says.
+    Whatever a connector's "default scope" field is set to is therefore accepted
+    and simply ignored.
+    """
+
+    def validate_scope(self, requested_scope: str | None) -> list[str] | None:
+        return requested_scope.split(" ") if requested_scope else None
+
+
 class SingleClientOAuthProvider:
     """A minimal, self-hosted OAuth 2.1 Authorization Server for exactly one
     pre-configured client — no external IdP, no login page.
@@ -147,7 +163,7 @@ class SingleClientOAuthProvider:
         redirect_uris: list[str],
         static_token: str | None,
     ) -> None:
-        self._client = OAuthClientInformationFull(
+        self._client = _PermissiveClientInformation(
             client_id=client_id,
             client_secret=client_secret,
             redirect_uris=[AnyUrl(uri) for uri in redirect_uris],

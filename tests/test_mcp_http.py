@@ -164,19 +164,18 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _authorize(client, *, code_challenge, redirect_uri=OAUTH_REDIRECT_URI, state="xyz"):
-    return client.get(
-        "/authorize",
-        params={
-            "response_type": "code",
-            "client_id": OAUTH_CLIENT_ID,
-            "redirect_uri": redirect_uri,
-            "code_challenge": code_challenge,
-            "code_challenge_method": "S256",
-            "state": state,
-        },
-        follow_redirects=False,
-    )
+def _authorize(client, *, code_challenge, redirect_uri=OAUTH_REDIRECT_URI, state="xyz", scope=None):
+    params = {
+        "response_type": "code",
+        "client_id": OAUTH_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "state": state,
+    }
+    if scope is not None:
+        params["scope"] = scope
+    return client.get("/authorize", params=params, follow_redirects=False)
 
 
 def _extract_code(res) -> tuple[str, str | None]:
@@ -212,6 +211,21 @@ def test_full_oauth_authorization_code_flow(examples_copy):
 
         mcp_res = client.post("/mcp", **_initialize({"Authorization": f"Bearer {access_token}"}))
         assert mcp_res.status_code == 200
+
+
+def test_authorize_accepts_any_client_supplied_scope(examples_copy):
+    """Connector setup screens often force you to fill in a "default"/"base"
+    scope; this server ignores it entirely — capabilities come from CLI flags,
+    not scopes — and must not reject the handshake over it."""
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+
+        authorize_res = _authorize(client, code_challenge=challenge, scope="anything here")
+        assert authorize_res.status_code == 302
+        code, _ = _extract_code(authorize_res)
+
+        token_res = client.post("/token", data=_token_form(code, verifier))
+        assert token_res.status_code == 200
 
 
 def test_static_token_still_works_when_oauth_enabled(examples_copy):
