@@ -18,6 +18,7 @@ function forForm(schema: JsonSchema): RJSFSchema {
   const copy = { ...schema };
   delete copy.$schema;
   delete copy["x-card"];
+  delete copy["x-collection"];
   return copy as RJSFSchema;
 }
 
