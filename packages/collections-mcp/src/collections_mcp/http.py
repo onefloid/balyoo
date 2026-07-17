@@ -45,7 +45,6 @@ from collections_core.service import CollectionsService
 from mcp.server.auth.handlers.authorize import AuthorizationHandler
 from mcp.server.auth.handlers.metadata import MetadataHandler
 from mcp.server.auth.handlers.token import TokenHandler
-from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.middleware.client_auth import AuthenticationError
 from mcp.server.auth.provider import (
@@ -67,11 +66,10 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyHttpUrl, AnyUrl
 from starlette.applications import Starlette
-from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route
+from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from collections_mcp.server import build_server
@@ -349,8 +347,8 @@ class _LenientClientAuthenticator:
 
 def build_asgi_app(
     service: CollectionsService, *, token: str | None, oauth: OAuthConfig | None = None
-) -> Starlette:
-    """Build the Streamable HTTP MCP app (mounted at ``/mcp``).
+) -> ASGIApp:
+    """Build the Streamable HTTP MCP app, served at ``/mcp``.
 
     ``service`` is already configured with its effective capabilities (read-only,
     deletable); auth only gates access, it does not change what tools exist.
@@ -358,6 +356,13 @@ def build_asgi_app(
     this server additionally becomes its own OAuth 2.1 Authorization Server for
     that one client (see :class:`SingleClientOAuthProvider`) — ``/mcp`` then
     accepts either the static ``token`` or a token issued through that flow.
+
+    ``/mcp`` is dispatched directly (not via a Starlette ``Mount``, whose route
+    pattern requires a trailing path segment): a bare ``POST /mcp`` — the exact
+    request MCP clients make — would otherwise never match the mount and fall
+    through to Starlette's slash-redirect, sending a 307 that streaming MCP
+    clients generally don't follow, breaking the connection right after a
+    successful OAuth handshake.
     """
     manager = StreamableHTTPSessionManager(
         app=build_server(service),
@@ -372,10 +377,9 @@ def build_asgi_app(
         return JSONResponse({"status": "ok"})
 
     routes: list[Route] = [Route("/health", health, methods=["GET"])]
-    middleware: list[Middleware] = []
 
     if oauth is None:
-        routes.append(Mount("/mcp", app=_require_token(handle_mcp, token)))
+        mcp_app: ASGIApp = _require_token(handle_mcp, token)
     else:
         provider = SingleClientOAuthProvider(
             client_id=oauth.client_id,
@@ -417,18 +421,21 @@ def build_asgi_app(
             required_scopes=[],
             resource_metadata_url=build_resource_metadata_url(issuer_url),
         )
-        routes.append(Mount("/mcp", app=guarded_mcp))
-        middleware = [
-            Middleware(
-                AuthenticationMiddleware,
-                backend=BearerAuthBackend(ProviderTokenVerifier(provider)),
-            ),
-            Middleware(AuthContextMiddleware),
-        ]
+        mcp_app = AuthenticationMiddleware(
+            guarded_mcp, backend=BearerAuthBackend(ProviderTokenVerifier(provider))
+        )
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: Starlette):
         async with manager.run():
             yield
 
-    return Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
+    other_routes_app = Starlette(routes=routes, lifespan=lifespan)
+
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] in ("/mcp", "/mcp/"):
+            await mcp_app(scope, receive, send)
+            return
+        await other_routes_app(scope, receive, send)
+
+    return app

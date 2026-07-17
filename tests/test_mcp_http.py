@@ -69,6 +69,18 @@ def test_mcp_accepts_the_configured_token(examples_copy):
         assert client.post("/mcp", **ok).status_code == 200
 
 
+def test_mcp_does_not_redirect_for_the_bare_path(examples_copy):
+    """A bare `POST /mcp` (no trailing slash) — what real MCP clients send — must
+    be handled directly, not 307-redirected to `/mcp/`: streaming MCP clients
+    generally don't follow redirects for a POST body, so a redirect here silently
+    breaks the connection. Regression test with `follow_redirects=False`, since
+    TestClient follows redirects by default and would otherwise mask this."""
+    with _client(examples_copy) as client:
+        ok = _initialize({"Authorization": f"Bearer {TOKEN}"})
+        res = client.post("/mcp", follow_redirects=False, **ok)
+        assert res.status_code == 200
+
+
 def test_anonymous_mode_needs_no_token(examples_copy):
     with _client(examples_copy, token=None) as client:
         assert client.post("/mcp", **_initialize()).status_code == 200
@@ -232,6 +244,13 @@ def test_static_token_still_works_when_oauth_enabled(examples_copy):
     with _oauth_client(examples_copy) as client:
         ok = _initialize({"Authorization": f"Bearer {TOKEN}"})
         assert client.post("/mcp", **ok).status_code == 200
+
+
+def test_mcp_does_not_redirect_for_the_bare_path_with_oauth_enabled(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        ok = _initialize({"Authorization": f"Bearer {TOKEN}"})
+        res = client.post("/mcp", follow_redirects=False, **ok)
+        assert res.status_code == 200
 
 
 def test_token_accepts_client_secret_via_http_basic(examples_copy):
