@@ -1,6 +1,7 @@
-# Fly.io deployment for the remote MCP server. Rename `app` and set secrets before
-# deploying (see packages/collections-mcp/README.md).
-app = "collections-mcp"
+# Fly.io deployment for the remote MCP server. Set secrets before deploying (see
+# packages/collections-mcp/README.md). Deploys automatically on push to main via
+# .github/workflows/ci.yml (needs a FLY_API_TOKEN repo secret).
+app = "balyoo"
 primary_region = "fra"
 
 [build]

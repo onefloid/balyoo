@@ -148,7 +148,7 @@ The repo ships a `Dockerfile` and `fly.toml`; the container runs the MCP server 
 **SQLite** at `/data/collections.db` (a durable volume):
 
 ```bash
-fly launch --no-deploy --copy-config      # rename the app in fly.toml
+fly launch --no-deploy --copy-config      # rename the app in fly.toml if you fork this
 fly volumes create collections_data --size 1
 fly secrets set COLLECTIONS_MCP_TOKEN=$(openssl rand -hex 32)
 fly deploy
@@ -156,6 +156,22 @@ fly deploy
 # seed the (empty) database once, then it persists on the volume
 fly ssh console -C "/app/.venv/bin/collections migrate --root /app/examples/collections --db /data/collections.db"
 ```
+
+### Continuous deployment
+
+`.github/workflows/ci.yml` deploys automatically on every push to `main`, after
+the Python lint/test job passes — no manual `fly deploy` needed for routine
+changes. It needs a `FLY_API_TOKEN` repository secret:
+
+```bash
+fly tokens create deploy -x 999999h   # a long-lived deploy token
+```
+
+Add the output as a secret named `FLY_API_TOKEN` under **Settings → Secrets and
+variables → Actions** in the GitHub repo. Without it, the `deploy` job fails
+(tests/lint on `pull_request`s are unaffected — deploy only runs on `push` to
+`main`). A manual `fly deploy` from your machine (as above) still works too, e.g.
+for a one-off redeploy without pushing a commit.
 
 The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL in your LLM
 host along with the bearer token (see [Connecting a client](#connecting-a-client)
