@@ -15,6 +15,7 @@ from collections_core.errors import (
     ItemNotFound,
 )
 from collections_core.models import Item, Page, Query
+from collections_core.query import run_query
 
 
 def _safe_segment(kind: str, value: str) -> str:
@@ -91,11 +92,7 @@ class FilesystemStorageProvider:
         return json.loads((directory / "schema.json").read_text(encoding="utf-8"))
 
     def list_items(self, collection: str, query: Query) -> Page[Item]:
-        items = self._filter(self._load_all(collection), query)
-        total = len(items)
-        items = self._sort(items, query)
-        window = items[query.offset : query.offset + query.limit]
-        return Page[Item](items=window, total=total, limit=query.limit, offset=query.offset)
+        return run_query(self._load_all(collection), query)
 
     def get_item(self, collection: str, item_id: str) -> Item:
         path = self._item_path(collection, item_id)
@@ -133,65 +130,8 @@ class FilesystemStorageProvider:
             raise ItemNotFound(collection, item_id)
         path.unlink()
 
-    # -- in-memory query engine -----------------------------------------
-    @staticmethod
-    def _filter(items: list[Item], query: Query) -> list[Item]:
-        result = items
-        if query.filters:
-            result = [
-                item
-                for item in result
-                if all(str(item.data.get(k)) == v for k, v in query.filters.items())
-            ]
-        if query.q:
-            needle = query.q.lower()
-            result = [item for item in result if _contains(item.data, needle)]
-        return result
-
-    @staticmethod
-    def _sort(items: list[Item], query: Query) -> list[Item]:
-        if not query.sort:
-            return items
-        field = query.sort
-        return sorted(
-            items,
-            key=lambda item: _sort_key(item.data.get(field)),
-            reverse=query.order == "desc",
-        )
-
     @staticmethod
     def _write(path: Path, data: dict[str, Any]) -> None:
         path.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
-
-
-def _sort_key(value: Any) -> tuple[int, Any]:
-    """A total, type-safe sort key so heterogeneous field values never crash.
-
-    Values are bucketed by type rank first, so different types are never compared
-    against each other; within a bucket the natural value orders as expected.
-    Unorderable values (lists, dicts) fall back to a stable JSON string, and
-    missing/None values sort last on ascending (matching the previous behaviour).
-    """
-    if value is None:
-        return (4, "")
-    if isinstance(value, bool):
-        return (0, int(value))
-    if isinstance(value, (int, float)):
-        return (1, value)
-    if isinstance(value, str):
-        return (2, value)
-    return (3, json.dumps(value, sort_keys=True, ensure_ascii=False, default=str))
-
-
-def _contains(data: dict[str, Any], needle: str) -> bool:
-    """True if any string value (top-level or nested in lists) contains needle."""
-    for value in data.values():
-        if isinstance(value, str) and needle in value.lower():
-            return True
-        if isinstance(value, list) and any(
-            isinstance(v, str) and needle in v.lower() for v in value
-        ):
-            return True
-    return False

@@ -15,6 +15,7 @@ server is a thin wrapper over them.
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -23,6 +24,8 @@ from collections_core.errors import CollectionsError, SchemaValidationError
 from collections_core.models import Query
 from collections_core.service import CollectionsService
 from mcp.server.lowlevel import Server
+
+logger = logging.getLogger("collections_mcp")
 
 # Presentation-only keywords that must not leak into a write tool's input schema.
 _SCHEMA_META = ("$schema", "x-card", "x-collection")
@@ -194,6 +197,9 @@ def build_server(
         try:
             payload = dispatch(resolve(), name, arguments or {})
         except CollectionsError as exc:
+            # Log the tool name and error type (no argument values, which may be
+            # user content) so operators can debug connector issues.
+            logger.info("tool %s failed: %s", name, type(exc).__name__)
             message = str(exc)
             if isinstance(exc, SchemaValidationError):
                 message += "\n- " + "\n- ".join(exc.errors)
