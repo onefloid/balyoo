@@ -15,6 +15,7 @@ server is a thin wrapper over them.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import mcp.types as types
@@ -170,17 +171,28 @@ def dispatch(service: CollectionsService, name: str, arguments: dict[str, Any]) 
 
 
 # -- server --------------------------------------------------------------------
-def build_server(service: CollectionsService) -> Server:
+# A ServiceResolver produces the CollectionsService for the current call. For stdio
+# it is a constant; for the HTTP server it inspects the authenticated request so a
+# token's scopes decide read-only vs read-write (see ``http.py``).
+ServiceResolver = Callable[[], CollectionsService]
+
+
+def build_server(
+    service: CollectionsService | ServiceResolver,
+) -> Server:
+    resolve: ServiceResolver = (
+        service if callable(service) else (lambda svc=service: svc)
+    )
     server: Server = Server("collections")
 
     @server.list_tools()
     async def _list_tools() -> list[types.Tool]:
-        return build_tools(service)
+        return build_tools(resolve())
 
     @server.call_tool()
     async def _call_tool(name: str, arguments: dict[str, Any]):
         try:
-            payload = dispatch(service, name, arguments or {})
+            payload = dispatch(resolve(), name, arguments or {})
         except CollectionsError as exc:
             message = str(exc)
             if isinstance(exc, SchemaValidationError):

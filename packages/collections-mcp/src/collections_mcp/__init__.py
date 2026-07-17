@@ -8,4 +8,21 @@ so all validation and capability rules are reused.
 
 from collections_mcp.server import build_server, build_tools, dispatch, run_stdio
 
-__all__ = ["build_server", "build_tools", "dispatch", "run_stdio"]
+__all__ = [
+    "build_server",
+    "build_tools",
+    "dispatch",
+    "run_stdio",
+    "OAuthConfig",
+    "build_asgi_app",
+]
+
+
+def __getattr__(name: str):
+    # Lazily expose the HTTP server so importing the package (e.g. for the stdio
+    # server) doesn't require the HTTP/OAuth dependencies to be present.
+    if name in {"OAuthConfig", "build_asgi_app", "JwtTokenVerifier"}:
+        from collections_mcp import http
+
+        return getattr(http, name)
+    raise AttributeError(name)

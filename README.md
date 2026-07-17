@@ -158,8 +158,11 @@ Point an MCP host at it — e.g. in Claude Desktop's `claude_desktop_config.json
 } } }
 ```
 
-See [`packages/collections-mcp/README.md`](packages/collections-mcp/README.md) for
-the full tool list.
+For a **cloud LLM**, run it as a remote server over HTTP — `collections mcp --http`,
+secured as an OAuth 2.1 resource server (a token's scope grants writes) and
+deployable with the included `Dockerfile` / `fly.toml`. See
+[`packages/collections-mcp/README.md`](packages/collections-mcp/README.md) for the
+full tool list and deployment steps.
 
 ## How it fits together
 

@@ -118,16 +118,61 @@ def serve(
 
 
 @app.command
-def mcp(*, read_only: bool = False, root: Path = DEFAULT_ROOT) -> None:
-    """Serve collections over the Model Context Protocol (stdio).
+def mcp(
+    *,
+    http: bool = False,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    read_only: bool = False,
+    root: Path = DEFAULT_ROOT,
+) -> None:
+    """Serve collections over the Model Context Protocol.
 
-    Point an MCP host (e.g. Claude Desktop) at this command to let an assistant
-    read and write collections as tools. Add --read-only to expose read tools only.
+    Default transport is stdio (what a local host like Claude Desktop launches).
+    Add --http to serve the remote Streamable HTTP transport for a cloud LLM,
+    secured as an OAuth 2.1 resource server configured via COLLECTIONS_MCP_*
+    environment variables:
+
+      COLLECTIONS_MCP_ISSUER        OIDC issuer URL (the identity provider)
+      COLLECTIONS_MCP_RESOURCE_URL  public URL of this server (the resource)
+      COLLECTIONS_MCP_WRITE_SCOPE   scope granting writes (default collections:write)
+      COLLECTIONS_MCP_AUDIENCE      token audience (default = resource URL)
+      COLLECTIONS_MCP_JWKS_URL      JWKS URL (default: discovered from the issuer)
     """
-    from collections_mcp.server import run_stdio
+    if not http:
+        from collections_mcp.server import run_stdio
 
-    service = _service(root, read_only=read_only)
-    run_stdio(service)
+        run_stdio(_service(root, read_only=read_only))
+        return
+
+    import os
+
+    import uvicorn
+    from collections_mcp.http import OAuthConfig, build_asgi_app
+
+    issuer = os.environ.get("COLLECTIONS_MCP_ISSUER")
+    resource = os.environ.get("COLLECTIONS_MCP_RESOURCE_URL")
+    if not issuer or not resource:
+        print(
+            "error: --http requires COLLECTIONS_MCP_ISSUER and "
+            "COLLECTIONS_MCP_RESOURCE_URL",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    oauth = OAuthConfig(
+        issuer_url=issuer,
+        resource_url=resource,
+        write_scope=os.environ.get("COLLECTIONS_MCP_WRITE_SCOPE", "collections:write"),
+        audience=os.environ.get("COLLECTIONS_MCP_AUDIENCE"),
+        jwks_url=os.environ.get("COLLECTIONS_MCP_JWKS_URL"),
+    )
+    # `read_only` here forces read-only regardless of token scope; otherwise the
+    # token's scope decides per request.
+    def service_factory(scope_read_only: bool) -> CollectionsService:
+        return _service(root, read_only=read_only or scope_read_only)
+
+    uvicorn.run(build_asgi_app(service_factory, oauth), host=host, port=port)
 
 
 @app.command

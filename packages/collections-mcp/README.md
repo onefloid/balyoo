@@ -39,3 +39,47 @@ Add to `claude_desktop_config.json`:
   }
 }
 ```
+
+## Remote (HTTP + OAuth 2.1) — for cloud LLMs
+
+A cloud LLM can't launch a local process; it connects to a **URL** over the
+Streamable HTTP transport. `collections mcp --http` serves that, secured as an
+**OAuth 2.1 resource server**: an external OIDC identity provider issues tokens,
+this server only verifies the bearer JWT and maps its scopes to capabilities —
+**a valid token grants reads; the write scope grants writes** (reusing the same
+capability gating). The MCP endpoint is at `/mcp`; `/.well-known/oauth-protected-resource`
+advertises your identity provider so MCP clients can run the OAuth flow.
+
+Configure via environment:
+
+| Variable | Meaning |
+|---|---|
+| `COLLECTIONS_MCP_ISSUER` | OIDC issuer URL (your identity provider) |
+| `COLLECTIONS_MCP_RESOURCE_URL` | public URL of this server (the resource / audience) |
+| `COLLECTIONS_MCP_WRITE_SCOPE` | scope granting writes (default `collections:write`) |
+| `COLLECTIONS_MCP_AUDIENCE` | token audience (default = resource URL) |
+| `COLLECTIONS_MCP_JWKS_URL` | JWKS URL (default: discovered from the issuer) |
+
+You need an **OIDC identity provider** as the authorization server (Auth0 / WorkOS
+AuthKit / Stytch / Keycloak, …). The server is IdP-agnostic — pick one that
+supports **Dynamic Client Registration** for smooth client onboarding. Register a
+`collections:write` scope/permission and grant it to whoever may write.
+
+### Deploy to Fly.io
+
+The repo ships a `Dockerfile` and `fly.toml` (durable volume for the data):
+
+```bash
+fly launch --no-deploy --copy-config      # rename the app in fly.toml
+fly volumes create collections_data --size 1
+fly secrets set \
+  COLLECTIONS_MCP_ISSUER=https://YOUR-IDP/ \
+  COLLECTIONS_MCP_RESOURCE_URL=https://YOUR-APP.fly.dev
+fly deploy
+```
+
+The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL (with
+the OAuth flow) in your LLM host — e.g. Anthropic's MCP connector or a Claude.ai
+custom connector. Seed the volume with your collections (`fly ssh console`, or copy
+your `schema.json`/`items` layout) — an empty data root simply serves no collections.
+

@@ -1,0 +1,22 @@
+# Fly.io deployment for the remote MCP server. Rename `app` and set secrets before
+# deploying (see packages/collections-mcp/README.md).
+app = "collections-mcp"
+primary_region = "fra"
+
+[build]
+
+[env]
+  COLLECTIONS_MCP_WRITE_SCOPE = "collections:write"
+  # COLLECTIONS_MCP_ISSUER / _RESOURCE_URL / _AUDIENCE are set via `fly secrets set`.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+# Durable storage for the JSON collections; mounted at /data, used as /data/collections.
+[[mounts]]
+  source = "collections_data"
+  destination = "/data"
