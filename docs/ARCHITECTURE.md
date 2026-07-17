@@ -120,14 +120,16 @@ a **table** and a modern **card** view with client-side search/sort, item detail
 and **create/edit forms generated from JSON Schema** (via RJSF) — works for any
 collection. It depends only on the generic API.
 
-**Schema-driven cards.** The card (tile) layout is chosen by an optional `x-card`
-block in the collection's schema (`title` / `subtitle` / `image` / `badges` /
-`fields`, each naming a property); when absent, `resolveCardConfig`
+**Schema-driven cards.** The card (tile) layout and the collection's default view
+are chosen by an optional `x-card` block in the collection's schema (`default` of
+`"list"`/`"cards"`, plus `title` / `subtitle` / `image` / `badges` / `fields`, each
+naming a property); when absent, `resolveCardConfig`
 (`packages/collections-ui/src/card.ts`) derives one — title from `title`/`name`,
-array fields as chips, remaining scalars as key/value rows. `x-card` is a custom
-keyword, ignored by JSON Schema validators, so it never affects data validation
-(it is also stripped before the schema reaches RJSF). The list/card choice is
-remembered in `localStorage`.
+array fields as chips, remaining scalars as key/value rows, defaulting to the list
+view. `x-card` is a custom keyword, ignored by JSON Schema validators, so it never
+affects data validation (it is also stripped before the schema reaches RJSF). A
+viewer's List/Cards choice is remembered per collection (`localStorage`) and
+overrides the schema default.
 
 **One build, many deployments.** A runtime `config.json` selects the data source:
 the live REST API (`{"apiBase": "", "static": false}`, full CRUD) or the static

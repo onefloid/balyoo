@@ -27,7 +27,13 @@ const fake: ApiClient = {
       year: { type: "integer" },
       tags: { type: "array" },
     },
-    "x-card": { title: "title", subtitle: "author", badges: ["tags"], fields: ["year"] },
+    "x-card": {
+      default: "cards",
+      title: "title",
+      subtitle: "author",
+      badges: ["tags"],
+      fields: ["year"],
+    },
   }),
   listItems: async () => ({
     items: [
@@ -56,38 +62,39 @@ function renderAt(path: string) {
 afterEach(() => localStorage.clear());
 
 describe("card view", () => {
-  it("switches to cards and renders schema-driven tile content", async () => {
+  it("opens in the schema's default view (cards) with schema-driven tile content", async () => {
     renderAt("/c/books");
-    // Default list view renders a table.
-    expect(await screen.findByRole("table")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Cards" }));
-
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    const card = screen.getByRole("link", { name: /Dune/ });
+    const card = await screen.findByRole("link", { name: /Dune/ });
+    expect(screen.queryByRole("table")).not.toBeInTheDocument(); // default is cards
     expect(within(card).getByText("Dune")).toBeInTheDocument(); // title
     expect(within(card).getByText("Herbert")).toBeInTheDocument(); // subtitle
     expect(within(card).getByText("sci-fi")).toBeInTheDocument(); // badge from tags
     expect(within(card).getByText("1965")).toBeInTheDocument(); // field value
   });
 
+  it("toggles to the list (table) view", async () => {
+    renderAt("/c/books");
+    await screen.findByRole("link", { name: /Dune/ });
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+  });
+
   it("navigates to the detail page when a card is clicked", async () => {
     renderAt("/c/books");
-    fireEvent.click(await screen.findByRole("button", { name: "Cards" }));
-    fireEvent.click(screen.getByRole("link", { name: /Dune/ }));
+    fireEvent.click(await screen.findByRole("link", { name: /Dune/ }));
     // Detail page heading is the item id.
     expect(await screen.findByRole("heading", { name: "dune" })).toBeInTheDocument();
   });
 
-  it("remembers the chosen view across mounts (localStorage)", async () => {
+  it("remembers a user override per collection, beating the schema default", async () => {
     const first = renderAt("/c/books");
-    fireEvent.click(await screen.findByRole("button", { name: "Cards" }));
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // Schema default is cards; user switches to list.
+    fireEvent.click(await first.findByRole("button", { name: "List" }));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
     first.unmount();
 
     renderAt("/c/books");
-    // No table on remount: the "cards" preference was persisted.
-    expect(await screen.findByRole("link", { name: /Dune/ })).toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    // The stored "list" choice wins over the schema's "cards" default.
+    expect(await screen.findByRole("table")).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@
   "required": ["title"],
   "additionalProperties": true,
   "x-card": {
+    "default": "cards",
     "title": "title",
     "subtitle": "author",
     "badges": ["tags"],

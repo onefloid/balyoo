@@ -12,6 +12,7 @@
   "required": ["title"],
   "additionalProperties": true,
   "x-card": {
+    "default": "list",
     "title": "title",
     "subtitle": "director",
     "badges": ["genres"],

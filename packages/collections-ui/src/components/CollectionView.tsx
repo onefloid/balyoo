@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { resolveCardConfig } from "../card";
 import { useApi } from "../apiContext";
-import { usePersistentState, useAsync } from "../hooks";
+import { useAsync, useViewPreference } from "../hooks";
 import type { Item } from "../types";
 import { ItemCard } from "./ItemCard";
 import { Breadcrumb, ErrorBox, formatCell, Loading, ReadOnlyBadge } from "./ui";
@@ -31,12 +31,12 @@ export function CollectionView() {
 
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortState | null>(null);
-  const [view, setView] = usePersistentState("collections-ui:view", "list");
 
   const cardConfig = useMemo(
     () => (data ? resolveCardConfig(data[1]) : null),
     [data],
   );
+  const [view, setView] = useViewPreference(name, cardConfig?.defaultView ?? "list");
 
   const columns = useMemo(() => {
     if (!data) return [];
