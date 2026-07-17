@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import { useApi } from "../apiContext";
 import { useAsync } from "../hooks";
-import { ErrorBox, Loading, ReadOnlyBadge } from "./ui";
+import { Avatar, ErrorBox, Loading, ReadOnlyBadge } from "./ui";
 
 export function CollectionList() {
   const api = useApi();
@@ -21,11 +21,14 @@ export function CollectionList() {
         <div className="cards">
           {collections.map((c) => (
             <Link key={c.name} className="card" to={`/c/${encodeURIComponent(c.name)}`}>
-              <div className="name">
-                {c.name} <ReadOnlyBadge show={!c.capabilities.supports_write} />
-              </div>
-              <div className="meta">
-                {c.item_count} item{c.item_count === 1 ? "" : "s"}
+              <Avatar name={c.name} />
+              <div className="card-text">
+                <div className="name">
+                  {c.name} <ReadOnlyBadge show={!c.capabilities.supports_write} />
+                </div>
+                <div className="meta">
+                  {c.item_count} item{c.item_count === 1 ? "" : "s"}
+                </div>
               </div>
             </Link>
           ))}

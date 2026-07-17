@@ -4,6 +4,7 @@
 // by JSON Schema validators, so it never affects data validation.
 //
 //   "x-card": {
+//     "default": "cards",        // optional: default view for this collection
 //     "title": "title",          // property shown as the tile heading
 //     "subtitle": "author",      // optional secondary line
 //     "image": "cover",          // optional property holding an image URL
@@ -13,7 +14,11 @@
 
 import type { JsonSchema } from "./types";
 
+export type ViewMode = "list" | "cards";
+
 export interface CardConfig {
+  /** Default view for the collection page ("list" unless the schema says "cards"). */
+  defaultView: ViewMode;
   /** Property name for the heading, or the sentinel "id" to use the item id. */
   title: string;
   subtitle?: string;
@@ -23,6 +28,7 @@ export interface CardConfig {
 }
 
 interface RawCard {
+  default?: unknown;
   title?: unknown;
   subtitle?: unknown;
   image?: unknown;
@@ -58,6 +64,7 @@ export function resolveCardConfig(schema: JsonSchema): CardConfig {
 function fromExplicit(raw: RawCard, props: Props, names: string[]): CardConfig {
   const fallback = fromSchema(props, names);
   return {
+    defaultView: raw.default === "cards" ? "cards" : "list",
     title: asName(raw.title, names) ?? fallback.title,
     subtitle: asName(raw.subtitle, names),
     image: asName(raw.image, names),
@@ -86,5 +93,5 @@ function fromSchema(props: Props, names: string[]): CardConfig {
     .filter((n) => !used.has(n) && !isType(n, "array") && !isType(n, "object"))
     .slice(0, 3);
 
-  return { title, subtitle, image, badges, fields };
+  return { defaultView: "list", title, subtitle, image, badges, fields };
 }

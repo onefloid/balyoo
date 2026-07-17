@@ -21,7 +21,8 @@ export function App() {
     <>
       <header className="site-header">
         <Link className="brand" to="/">
-          Collections
+          <span className="brand-mark" aria-hidden="true" />
+          <span className="brand-name">Collections</span>
         </Link>
         <span className="tagline">Schema-first collections</span>
       </header>

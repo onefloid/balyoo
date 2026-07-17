@@ -1,27 +1,40 @@
 import { useEffect, useState } from "react";
 
-/** State mirrored to localStorage, so a preference (e.g. list vs card view)
- * survives reloads. Falls back to in-memory state if storage is unavailable. */
-export function usePersistentState(
-  key: string,
-  initial: string,
-): [string, (value: string) => void] {
-  const [value, setValue] = useState<string>(() => {
-    try {
-      return localStorage.getItem(key) ?? initial;
-    } catch {
-      return initial;
-    }
-  });
-  const set = (next: string) => {
-    setValue(next);
+import type { ViewMode } from "./card";
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/** The list/card view for a collection: the user's stored choice if any, else the
+ * schema's default (`x-card.default`). The choice is remembered per collection, so
+ * different collections can open in different views. */
+export function useViewPreference(
+  collection: string,
+  schemaDefault: ViewMode,
+): [ViewMode, (value: ViewMode) => void] {
+  const key = `collections-ui:view:${collection}`;
+  const [stored, setStored] = useState<string | null>(() => readStored(key));
+
+  // Re-read when navigating to another collection.
+  useEffect(() => {
+    setStored(readStored(key));
+  }, [key]);
+
+  const view: ViewMode = stored === "list" || stored === "cards" ? stored : schemaDefault;
+  const set = (next: ViewMode) => {
+    setStored(next);
     try {
       localStorage.setItem(key, next);
     } catch {
       /* ignore: private mode / disabled storage */
     }
   };
-  return [value, set];
+  return [view, set];
 }
 
 export interface AsyncState<T> {

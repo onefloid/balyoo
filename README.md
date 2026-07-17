@@ -50,14 +50,21 @@ read-only deployment it shows no write controls. **One build serves every
 deployment**; a runtime `config.json` tells it whether it is talking to the live
 REST API or the static JSON mirror.
 
-Each card's contents are **schema-driven**: a collection may add an optional
-`x-card` block to its JSON Schema to choose the title, subtitle, image, badge and
-field properties shown on the tile; without it a sensible layout is derived from
-the schema. `x-card` is a custom keyword, ignored by JSON Schema validators.
+Each card's contents — and which view a collection **opens in** — are
+**schema-driven**: a collection may add an optional `x-card` block to its JSON
+Schema to set the default view (`"list"` or `"cards"`) and choose the title,
+subtitle, image, badge and field properties shown on the tile; without it a
+sensible layout is derived from the schema, defaulting to the list view. `x-card`
+is a custom keyword, ignored by JSON Schema validators. (A viewer's own List/Cards
+choice is remembered per collection and overrides the schema default.)
 
 ```jsonc
 // examples/collections/books/schema.json
-"x-card": { "title": "title", "subtitle": "author", "badges": ["tags"], "fields": ["year", "pages"] }
+"x-card": {
+  "default": "cards",
+  "title": "title", "subtitle": "author",
+  "badges": ["tags"], "fields": ["year", "pages"]
+}
 ```
 
 ```bash

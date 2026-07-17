@@ -19,12 +19,26 @@ describe("resolveCardConfig", () => {
       },
     });
     expect(config).toEqual({
+      defaultView: "list",
       title: "title",
       subtitle: "author",
       image: undefined,
       badges: ["tags"],
       fields: ["year"],
     });
+  });
+
+  it("reads the default view from x-card, defaulting to list", () => {
+    const props = { properties: { title: { type: "string" } } };
+    expect(resolveCardConfig({ ...props, "x-card": { default: "cards" } }).defaultView).toBe(
+      "cards",
+    );
+    expect(resolveCardConfig({ ...props, "x-card": { default: "list" } }).defaultView).toBe(
+      "list",
+    );
+    // Unknown/absent -> list.
+    expect(resolveCardConfig({ ...props, "x-card": {} }).defaultView).toBe("list");
+    expect(resolveCardConfig(props).defaultView).toBe("list");
   });
 
   it("drops x-card references to unknown properties", () => {

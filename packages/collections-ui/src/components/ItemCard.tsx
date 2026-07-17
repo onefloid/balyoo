@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import type { CardConfig } from "../card";
 import type { Item } from "../types";
-import { formatCell } from "./ui";
+import { Chip, formatCell } from "./ui";
 
 function badgeValues(item: Item, fields: string[]): string[] {
   const chips: string[] = [];
@@ -52,9 +52,7 @@ export function ItemCard({
         {badges.length > 0 && (
           <div className="item-card-badges">
             {badges.map((b, i) => (
-              <span key={i} className="chip">
-                {b}
-              </span>
+              <Chip key={i} label={b} />
             ))}
           </div>
         )}
