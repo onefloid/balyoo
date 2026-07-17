@@ -14,14 +14,15 @@ __all__ = [
     "dispatch",
     "run_stdio",
     "build_asgi_app",
+    "OAuthConfig",
 ]
 
 
 def __getattr__(name: str):
     # Lazily expose the HTTP server so importing the package (e.g. for the stdio
     # server) doesn't require the HTTP transport dependencies to be present.
-    if name == "build_asgi_app":
+    if name in {"build_asgi_app", "OAuthConfig"}:
         from collections_mcp import http
 
-        return http.build_asgi_app
+        return getattr(http, name)
     raise AttributeError(name)

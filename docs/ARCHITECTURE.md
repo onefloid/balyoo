@@ -113,6 +113,21 @@ token only gates access; capabilities come from CLI flags (`--read-only`,
 `fly.toml` deploy it with a durable volume, and a public `/health` endpoint backs the
 platform health check.
 
+Hosts that require a real OAuth flow instead of a bare token (ChatGPT, Claude.ai
+custom connectors) can be satisfied without an external identity provider: when
+`COLLECTIONS_MCP_OAUTH_CLIENT_ID`/`_CLIENT_SECRET`/`_REDIRECT_URIS` and
+`COLLECTIONS_MCP_PUBLIC_URL` are all set, this server additionally becomes its own
+OAuth 2.1 Authorization Server for that one pre-configured client
+(`SingleClientOAuthProvider`, built on the `mcp` SDK's `mcp.server.auth`
+primitives — PKCE, redirect_uri/state handling, and RFC 8414/9728 metadata are all
+the SDK's own). `/authorize` auto-approves immediately, since the client secret
+required at `/token` is the real gate for a single-owner service; issued
+authorization codes and access/refresh tokens are HMAC-signed, self-verifying
+strings rather than server-side state, so they survive this process restarting
+(Fly.io's scale-to-zero rebuilds the machine fresh on the next request). `/mcp`
+then accepts either the static token or a token issued through this flow —
+OAuth is strictly additive on top of the token, never a replacement for it.
+
 ## Static-first data layout
 
 ```

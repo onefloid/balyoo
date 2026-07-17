@@ -7,6 +7,10 @@ primary_region = "fra"
 
 [env]
   # COLLECTIONS_MCP_TOKEN (the bearer secret) is set via `fly secrets set`.
+  # For ChatGPT/Claude.ai custom connectors (which require a real OAuth flow, not
+  # a bare token), also set COLLECTIONS_MCP_OAUTH_CLIENT_ID/_CLIENT_SECRET/
+  # _REDIRECT_URIS and COLLECTIONS_MCP_PUBLIC_URL — see
+  # packages/collections-mcp/README.md.
 
 [http_service]
   internal_port = 8080
