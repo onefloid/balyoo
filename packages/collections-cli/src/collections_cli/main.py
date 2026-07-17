@@ -6,11 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-from collections_core.errors import CollectionsError
+from collections_core.errors import CollectionsError, Conflict
+from collections_core.interfaces import StorageProvider
 from collections_core.models import Query
 from collections_core.service import CollectionsService
 from collections_filesystem.provider import FilesystemStorageProvider
 from collections_schema.validator import JsonSchemaValidator
+from collections_sqlite.provider import SqliteStorageProvider
 from collections_static.exporter import export_site
 from cyclopts import App
 
@@ -23,27 +25,40 @@ items_app = App(name="items", help="Manage items within a collection.")
 app.command(items_app)
 
 
+def _provider(root: Path, db: Path | None) -> StorageProvider:
+    """Pick the storage backend: SQLite when ``--db`` is given, else the filesystem."""
+    if db is not None:
+        return SqliteStorageProvider(db)
+    return FilesystemStorageProvider(root)
+
+
 def _service(
-    root: Path, *, read_only: bool, deletable: bool = True
+    root: Path,
+    *,
+    read_only: bool,
+    deletable: bool = True,
+    db: Path | None = None,
 ) -> CollectionsService:
-    provider = FilesystemStorageProvider(root)
     return CollectionsService(
-        provider, JsonSchemaValidator(), read_only=read_only, deletable=deletable
+        _provider(root, db),
+        JsonSchemaValidator(),
+        read_only=read_only,
+        deletable=deletable,
     )
 
 
 @app.command(name="list")
-def list_collections(*, root: Path = DEFAULT_ROOT) -> None:
+def list_collections(*, db: Path | None = None, root: Path = DEFAULT_ROOT) -> None:
     """List all collections and their item counts."""
-    service = _service(root, read_only=True)
+    service = _service(root, read_only=True, db=db)
     for info in service.list_collections():
         print(f"{info.name}\t({info.item_count} items)")
 
 
 @app.command
-def schema(collection: str, *, root: Path = DEFAULT_ROOT) -> None:
+def schema(collection: str, *, db: Path | None = None, root: Path = DEFAULT_ROOT) -> None:
     """Print the JSON Schema of a collection."""
-    service = _service(root, read_only=True)
+    service = _service(root, read_only=True, db=db)
     print(json.dumps(service.get_schema(collection), indent=2, ensure_ascii=False))
 
 
@@ -55,10 +70,11 @@ def items_list(
     sort: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
     """List (and optionally search) items in a collection."""
-    service = _service(root, read_only=True)
+    service = _service(root, read_only=True, db=db)
     page = service.list_items(
         collection, Query(q=q, sort=sort, limit=limit, offset=offset)
     )
@@ -68,34 +84,45 @@ def items_list(
 
 
 @items_app.command(name="get")
-def items_get(collection: str, item_id: str, *, root: Path = DEFAULT_ROOT) -> None:
+def items_get(
+    collection: str, item_id: str, *, db: Path | None = None, root: Path = DEFAULT_ROOT
+) -> None:
     """Print a single item's data."""
-    service = _service(root, read_only=True)
+    service = _service(root, read_only=True, db=db)
     print(json.dumps(service.get_item(collection, item_id).data, indent=2, ensure_ascii=False))
 
 
 @items_app.command(name="create")
-def items_create(collection: str, *, data: str, root: Path = DEFAULT_ROOT) -> None:
+def items_create(
+    collection: str, *, data: str, db: Path | None = None, root: Path = DEFAULT_ROOT
+) -> None:
     """Create an item from a JSON string (validated against the schema)."""
-    service = _service(root, read_only=False)
+    service = _service(root, read_only=False, db=db)
     item = service.create_item(collection, json.loads(data))
     print(item.id)
 
 
 @items_app.command(name="update")
 def items_update(
-    collection: str, item_id: str, *, data: str, root: Path = DEFAULT_ROOT
+    collection: str,
+    item_id: str,
+    *,
+    data: str,
+    db: Path | None = None,
+    root: Path = DEFAULT_ROOT,
 ) -> None:
     """Merge a JSON patch into an existing item (validated against the schema)."""
-    service = _service(root, read_only=False)
+    service = _service(root, read_only=False, db=db)
     item = service.update_item(collection, item_id, json.loads(data))
     print(json.dumps(item.data, indent=2, ensure_ascii=False))
 
 
 @items_app.command(name="delete")
-def items_delete(collection: str, item_id: str, *, root: Path = DEFAULT_ROOT) -> None:
+def items_delete(
+    collection: str, item_id: str, *, db: Path | None = None, root: Path = DEFAULT_ROOT
+) -> None:
     """Delete an item."""
-    service = _service(root, read_only=False)
+    service = _service(root, read_only=False, db=db)
     service.delete_item(collection, item_id)
     print(f"deleted {collection}/{item_id}")
 
@@ -107,17 +134,19 @@ def serve(
     port: int = 8000,
     read_only: bool = False,
     ui: Path | None = None,
+    db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
     """Serve the generic REST API (add --read-only to mask writes).
 
     Pass --ui <dir> with a built collections-ui bundle to also serve the web UI
-    from the same origin (no separate host, no CORS).
+    from the same origin (no separate host, no CORS). Pass --db <path> to use the
+    durable SQLite backend instead of the filesystem root.
     """
     import uvicorn
     from collections_rest.app import create_app
 
-    service = _service(root, read_only=read_only)
+    service = _service(root, read_only=read_only, db=db)
     uvicorn.run(create_app(service, ui_dir=ui), host=host, port=port)
 
 
@@ -129,14 +158,16 @@ def mcp(
     port: int = 8080,
     read_only: bool = False,
     per_user: bool = False,
+    db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
     """Serve collections over the Model Context Protocol.
 
     Default transport is stdio (what a local host like Claude Desktop launches).
     Add --http to serve the remote Streamable HTTP transport for a cloud LLM,
-    secured as an OAuth 2.1 resource server. With --per-user, each authenticated
-    subject gets its own isolated collections under <root>/<hashed-subject>.
+    secured as an OAuth 2.1 resource server. Pass --db <path> to use the durable
+    SQLite backend. With --per-user, each authenticated subject gets its own
+    isolated collections (a per-subject SQLite file, or a <root>/<hash> directory).
     Configured via COLLECTIONS_MCP_* environment variables:
 
       COLLECTIONS_MCP_ISSUER        OIDC issuer URL (the identity provider)
@@ -149,7 +180,7 @@ def mcp(
     if not http:
         from collections_mcp.server import run_stdio
 
-        run_stdio(_service(root, read_only=read_only))
+        run_stdio(_service(root, read_only=read_only, db=db))
         return
 
     import os
@@ -185,17 +216,49 @@ def mcp(
     def service_factory(
         scope_read_only: bool, scope_no_delete: bool, subject: str | None
     ) -> CollectionsService:
-        data_root = root
+        data_root, data_db = root, db
         if per_user and subject:
             digest = hashlib.sha256(subject.encode()).hexdigest()[:16]
-            data_root = root / digest
+            if db is not None:
+                data_db = db.with_name(f"{db.stem}-{digest}{db.suffix or '.db'}")
+            else:
+                data_root = root / digest
         return _service(
             data_root,
             read_only=read_only or scope_read_only,
             deletable=not scope_no_delete,
+            db=data_db,
         )
 
     uvicorn.run(build_asgi_app(service_factory, oauth), host=host, port=port)
+
+
+@app.command
+def migrate(*, db: Path, root: Path = DEFAULT_ROOT) -> None:
+    """Import collections and items from a filesystem <root> into a SQLite <db>.
+
+    Idempotent: re-running skips items that already exist, so it can seed a fresh
+    database or top up an existing one.
+    """
+    source = _service(root, read_only=True)
+    target = SqliteStorageProvider(db)
+    collections = imported = 0
+    for info in source.list_collections():
+        target.create_collection(info.name, source.get_schema(info.name))
+        collections += 1
+        offset = 0
+        while True:
+            page = source.list_items(info.name, Query(limit=1000, offset=offset))
+            for item in page.items:
+                try:
+                    target.create_item(info.name, {**item.data, "id": item.id})
+                    imported += 1
+                except Conflict:
+                    pass  # already present
+            offset += len(page.items)
+            if not page.items or offset >= page.total:
+                break
+    print(f"migrated {collections} collections, {imported} items into {db}")
 
 
 @app.command

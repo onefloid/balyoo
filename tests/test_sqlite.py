@@ -121,3 +121,18 @@ def test_persists_across_reopen(tmp_path):
 
     reopened = SqliteStorageProvider(db)
     assert reopened.get_item("books", "keep").data["title"] == "Kept"
+
+
+def test_cli_migrate_seeds_a_database_from_a_filesystem_root(examples_copy, tmp_path):
+    from collections_cli.main import migrate
+
+    db = tmp_path / "c.db"
+    migrate(db=db, root=examples_copy)
+
+    provider = SqliteStorageProvider(db)
+    assert provider.list_collections() == ["books", "movies"]
+    assert provider.get_item("books", "dune").data["title"] == "Dune"
+
+    # Idempotent: a second run doesn't duplicate or error.
+    migrate(db=db, root=examples_copy)
+    assert provider.list_items("books", Query(limit=100)).total == 2
