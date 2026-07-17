@@ -82,21 +82,44 @@ collections mcp --http --db collections.db ...
 ### Deploy to Fly.io
 
 The repo ships a `Dockerfile` and `fly.toml`; the container runs the MCP server on
-**SQLite** at `/data/collections.db` (a durable volume):
+**SQLite** at `/data/collections.db` (a durable volume) with a `/health` check.
 
-```bash
-fly launch --no-deploy --copy-config      # rename the app in fly.toml
-fly volumes create collections_data --size 1
-fly secrets set \
-  COLLECTIONS_MCP_ISSUER=https://YOUR-IDP/ \
-  COLLECTIONS_MCP_RESOURCE_URL=https://YOUR-APP.fly.dev
-fly deploy
+**The only values you must supply** are `COLLECTIONS_MCP_ISSUER` and
+`COLLECTIONS_MCP_RESOURCE_URL` — there are no real secrets (the server only
+*verifies* tokens; SQLite needs no credentials).
 
-# seed the (empty) database once, then it persists on the volume
-fly ssh console -C "/app/.venv/bin/collections migrate --root /app/examples/collections --db /data/collections.db"
-```
+**Checklist:**
+
+1. **Name the app** — set `app` in `fly.toml` (or `fly launch --no-deploy --copy-config`).
+   Your public URL becomes `https://<app>.fly.dev`.
+2. **Identity provider** — register a resource/API whose **audience equals that URL**
+   and define the `collections:write` / `collections:delete` scopes. Enable Dynamic
+   Client Registration so the LLM host can self-register. (If the IdP's `aud` can't
+   be a URL, set `COLLECTIONS_MCP_AUDIENCE` to match its value.)
+3. **Create the volume first** (same region), so Fly doesn't auto-create/duplicate it:
+   ```bash
+   fly volumes create collections_data --region <region> --size 1
+   ```
+4. **Set the config** (these are not secret; `[env]` in `fly.toml` also works):
+   ```bash
+   fly secrets set \
+     COLLECTIONS_MCP_ISSUER=https://YOUR-IDP/ \
+     COLLECTIONS_MCP_RESOURCE_URL=https://YOUR-APP.fly.dev
+   ```
+5. **Deploy:** `fly deploy`
+6. **Seed the empty database once** (then it persists on the volume):
+   ```bash
+   fly ssh console -C "/app/.venv/bin/collections migrate \
+     --root /app/examples/collections --db /data/collections.db"
+   ```
 
 The MCP endpoint is then `https://YOUR-APP.fly.dev/mcp`. Register that URL (with the
 OAuth flow) in your LLM host — e.g. Anthropic's MCP connector or a Claude.ai custom
 connector. An empty database simply serves no collections until seeded.
+
+> **Common pitfalls.** Tokens rejected with 401 almost always mean the token's
+> `aud` doesn't match `RESOURCE_URL`/`AUDIENCE`, or `ISSUER` doesn't exactly match
+> the token's `iss` (mind trailing slashes). One volume ⇒ keep it to a single
+> machine. A `503 "No server is available"` at the end of `fly deploy` is a
+> transient Fly control-plane error (the build already succeeded) — just retry.
 
