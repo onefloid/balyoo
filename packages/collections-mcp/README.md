@@ -72,10 +72,65 @@ Generate a strong token with e.g. `openssl rand -hex 32`. Without either
 
 - **Anthropic API MCP connector:** pass the token as `authorization_token`.
 - **Any client that lets you set headers:** send `Authorization: Bearer <token>`.
-- **claude.ai custom connector (web UI):** its connector flow is built around OAuth
-  or unauthenticated servers, so a static header may not be enterable there — for
-  that case deploy with `--allow-anonymous` (optionally `--read-only`) and rely on an
-  unguessable URL, or put the server behind your own gateway.
+- **ChatGPT / claude.ai custom connectors:** their setup screens only accept a
+  Client ID + Client Secret and drive a real OAuth flow, not a bare bearer token —
+  see [OAuth for ChatGPT / Claude.ai](#oauth-for-chatgpt--claudeai-custom-connectors)
+  below.
+
+### OAuth for ChatGPT / Claude.ai custom connectors
+
+ChatGPT's and Claude.ai's custom-connector setup screens only accept a
+**Client ID + Client Secret** and then run a standard OAuth 2.1 Authorization Code
+flow (with PKCE): redirect the browser to `/authorize`, expect a redirect back to
+*their* callback URL with a `code`, then `POST /token` to exchange it. A bare
+bearer token can't satisfy that UI.
+
+Rather than depending on an external identity provider, setting four more env vars
+makes this same server act as its own OAuth 2.1 Authorization Server for exactly
+one pre-configured client:
+
+| Variable | Meaning |
+|---|---|
+| `COLLECTIONS_MCP_OAUTH_CLIENT_ID` | any identifier you choose, e.g. `collections` |
+| `COLLECTIONS_MCP_OAUTH_CLIENT_SECRET` | a strong secret, e.g. `openssl rand -hex 32` |
+| `COLLECTIONS_MCP_OAUTH_REDIRECT_URIS` | comma-separated allowed callback URL(s) |
+| `COLLECTIONS_MCP_PUBLIC_URL` | this server's own `https://` base URL |
+
+All four must be set together (or none at all — `COLLECTIONS_MCP_TOKEN` alone keeps
+working exactly as above; OAuth is additive, never a replacement). `/mcp` then
+accepts *either* the static token or a token issued through the OAuth flow.
+
+There's no login page: `/authorize` auto-approves immediately, because the actual
+gate is the client secret required at the `/token` exchange — appropriate for a
+single-owner service, not a multi-tenant one. Authorization codes and issued
+access/refresh tokens are signed, self-verifying strings rather than anything
+stored server-side, so they survive this process restarting (e.g. Fly.io stopping
+an idle machine and rebuilding it fresh on the next request). To revoke every
+issued token at once, rotate `COLLECTIONS_MCP_OAUTH_CLIENT_SECRET`.
+
+**Redirect URIs to register:**
+
+- **Claude.ai:** fixed — `https://claude.ai/api/mcp/auth_callback`.
+- **ChatGPT:** *not* fixed — its connector setup screen shows a callback URL
+  specific to that connector instance; copy it character-for-character into
+  `COLLECTIONS_MCP_OAUTH_REDIRECT_URIS`.
+
+Comma-separate both if you're registering the same server with both apps:
+
+```bash
+fly secrets set \
+  COLLECTIONS_MCP_OAUTH_CLIENT_ID=collections \
+  COLLECTIONS_MCP_OAUTH_CLIENT_SECRET=$(openssl rand -hex 32) \
+  COLLECTIONS_MCP_OAUTH_REDIRECT_URIS="https://claude.ai/api/mcp/auth_callback,https://chatgpt.com/connector/oauth/YOUR-CALLBACK-ID" \
+  COLLECTIONS_MCP_PUBLIC_URL=https://YOUR-APP.fly.dev
+```
+
+Then, in the app's connector setup screen, paste in the Client ID and Client
+Secret you just set. If you ever see an `invalid_scope` error during the OAuth
+handshake, that means the connector sent an OAuth `scope` this server didn't
+expect — capabilities here are controlled by the `--read-only`/`--no-delete` flags
+above, not by OAuth scopes, so this is safe to ignore or investigate on a
+case-by-case basis.
 
 ### Storage backends
 

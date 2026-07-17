@@ -3,22 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import hashlib
 import json
+import secrets
 import socket
 import threading
 import time
+from urllib.parse import parse_qs, urlparse
 
 import uvicorn
 from collections_core.service import CollectionsService
 from collections_filesystem.provider import FilesystemStorageProvider
-from collections_mcp.http import build_asgi_app
+from collections_mcp.http import OAuthConfig, SingleClientOAuthProvider, build_asgi_app
 from collections_schema.validator import JsonSchemaValidator
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 from starlette.testclient import TestClient
 
 TOKEN = "s3cret-token"
+OAUTH_CLIENT_ID = "test-client"
+OAUTH_CLIENT_SECRET = "test-client-secret"
+OAUTH_REDIRECT_URI = "https://example.com/callback"
+OAUTH_PUBLIC_URL = "https://mcp.example.com"
 
 
 def _service(root, *, read_only=False, deletable=True) -> CollectionsService:
@@ -133,3 +141,181 @@ def test_full_authenticated_tool_call_over_http(examples_copy):
         created = asyncio.run(_create(f"http://127.0.0.1:{port}/mcp"))
         assert created["id"] == "http-it" and created["data"]["title"] == "T"
     assert (examples_copy / "books" / "items" / "http-it.json").exists()
+
+
+# -- self-hosted OAuth 2.1 flow (for ChatGPT/Claude.ai custom connectors) ----
+def _oauth_config() -> OAuthConfig:
+    return OAuthConfig(
+        client_id=OAUTH_CLIENT_ID,
+        client_secret=OAUTH_CLIENT_SECRET,
+        redirect_uris=[OAUTH_REDIRECT_URI],
+        public_url=OAUTH_PUBLIC_URL,
+    )
+
+
+def _oauth_client(root, *, token=TOKEN, **caps) -> TestClient:
+    return TestClient(build_asgi_app(_service(root, **caps), token=token, oauth=_oauth_config()))
+
+
+def _pkce_pair() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(32)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).decode().rstrip("=")
+    return verifier, challenge
+
+
+def _authorize(client, *, code_challenge, redirect_uri=OAUTH_REDIRECT_URI, state="xyz"):
+    return client.get(
+        "/authorize",
+        params={
+            "response_type": "code",
+            "client_id": OAUTH_CLIENT_ID,
+            "redirect_uri": redirect_uri,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "state": state,
+        },
+        follow_redirects=False,
+    )
+
+
+def _extract_code(res) -> tuple[str, str | None]:
+    query = parse_qs(urlparse(res.headers["location"]).query)
+    return query["code"][0], query.get("state", [None])[0]
+
+
+def _token_form(
+    code, verifier, *, client_secret=OAUTH_CLIENT_SECRET, redirect_uri=OAUTH_REDIRECT_URI
+):
+    return {
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "client_id": OAUTH_CLIENT_ID,
+        "client_secret": client_secret,
+        "code_verifier": verifier,
+    }
+
+
+def test_full_oauth_authorization_code_flow(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+
+        authorize_res = _authorize(client, code_challenge=challenge)
+        assert authorize_res.status_code == 302
+        code, state = _extract_code(authorize_res)
+        assert state == "xyz"
+
+        token_res = client.post("/token", data=_token_form(code, verifier))
+        assert token_res.status_code == 200
+        access_token = token_res.json()["access_token"]
+
+        mcp_res = client.post("/mcp", **_initialize({"Authorization": f"Bearer {access_token}"}))
+        assert mcp_res.status_code == 200
+
+
+def test_static_token_still_works_when_oauth_enabled(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        ok = _initialize({"Authorization": f"Bearer {TOKEN}"})
+        assert client.post("/mcp", **ok).status_code == 200
+
+
+def test_token_accepts_client_secret_via_http_basic(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+        code, _ = _extract_code(_authorize(client, code_challenge=challenge))
+
+        form = _token_form(code, verifier)
+        del form["client_secret"]
+        basic = base64.b64encode(f"{OAUTH_CLIENT_ID}:{OAUTH_CLIENT_SECRET}".encode()).decode()
+
+        res = client.post("/token", data=form, headers={"Authorization": f"Basic {basic}"})
+        assert res.status_code == 200
+        assert "access_token" in res.json()
+
+
+def test_token_rejects_wrong_client_secret(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+        code, _ = _extract_code(_authorize(client, code_challenge=challenge))
+
+        res = client.post("/token", data=_token_form(code, verifier, client_secret="wrong"))
+        assert res.status_code == 401
+
+
+def test_token_rejects_wrong_code_verifier(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+        code, _ = _extract_code(_authorize(client, code_challenge=challenge))
+
+        res = client.post("/token", data=_token_form(code, "wrong-verifier"))
+        assert res.status_code == 400
+        assert res.json()["error"] == "invalid_grant"
+
+
+def test_authorize_rejects_unregistered_redirect_uri(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        _, challenge = _pkce_pair()
+
+        res = _authorize(
+            client, code_challenge=challenge, redirect_uri="https://evil.example.com/cb"
+        )
+        assert res.status_code == 400
+
+
+def test_mcp_rejects_a_tampered_access_token(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        verifier, challenge = _pkce_pair()
+        code, _ = _extract_code(_authorize(client, code_challenge=challenge))
+        token_res = client.post("/token", data=_token_form(code, verifier))
+        access_token = token_res.json()["access_token"]
+
+        tampered = access_token[:-1] + ("A" if access_token[-1] != "A" else "B")
+        res = client.post("/mcp", **_initialize({"Authorization": f"Bearer {tampered}"}))
+        assert res.status_code == 401
+
+
+def test_mcp_rejects_an_expired_access_token(examples_copy):
+    provider = SingleClientOAuthProvider(
+        client_id=OAUTH_CLIENT_ID,
+        client_secret=OAUTH_CLIENT_SECRET,
+        redirect_uris=[OAUTH_REDIRECT_URI],
+        static_token=TOKEN,
+    )
+    expired = provider._sign(
+        {"kind": "access", "client_id": OAUTH_CLIENT_ID, "exp": time.time() - 10, "scopes": []}
+    )
+    with _oauth_client(examples_copy) as client:
+        res = client.post("/mcp", **_initialize({"Authorization": f"Bearer {expired}"}))
+        assert res.status_code == 401
+
+
+def test_tokens_survive_a_simulated_machine_restart(examples_copy):
+    """Codes/tokens are stateless (HMAC-signed), so a token issued by one provider
+    instance verifies against a freshly constructed one with the same client secret
+    — simulating Fly.io tearing down and rebuilding an idle machine."""
+    kwargs = dict(
+        client_id=OAUTH_CLIENT_ID,
+        client_secret=OAUTH_CLIENT_SECRET,
+        redirect_uris=[OAUTH_REDIRECT_URI],
+        static_token=TOKEN,
+    )
+    provider_a = SingleClientOAuthProvider(**kwargs)
+    token = provider_a._sign(
+        {"kind": "access", "client_id": OAUTH_CLIENT_ID, "exp": time.time() + 60, "scopes": []}
+    )
+
+    provider_b = SingleClientOAuthProvider(**kwargs)  # a fresh, unrelated instance
+    access = asyncio.run(provider_b.load_access_token(token))
+    assert access is not None and access.client_id == OAUTH_CLIENT_ID
+
+
+def test_oauth_metadata_endpoints_are_reachable(examples_copy):
+    with _oauth_client(examples_copy) as client:
+        auth_meta = client.get("/.well-known/oauth-authorization-server")
+        assert auth_meta.status_code == 200
+        assert auth_meta.json()["issuer"].rstrip("/") == OAUTH_PUBLIC_URL
+
+        resource_meta = client.get("/.well-known/oauth-protected-resource")
+        assert resource_meta.status_code == 200
+        assert OAUTH_PUBLIC_URL in json.dumps(resource_meta.json())

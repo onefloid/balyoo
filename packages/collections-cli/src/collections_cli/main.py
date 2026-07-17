@@ -171,6 +171,14 @@ def mcp(
     not the token: --read-only serves read tools only, --no-delete hides delete_item.
     Pass --allow-anonymous to serve without a token (no authentication). Pass --db
     <path> to use the durable SQLite backend instead of the filesystem root.
+
+    Hosts that require a real OAuth flow (ChatGPT, Claude.ai custom connectors)
+    can't use a bare bearer token. Setting all four of COLLECTIONS_MCP_OAUTH_CLIENT_ID,
+    COLLECTIONS_MCP_OAUTH_CLIENT_SECRET, COLLECTIONS_MCP_OAUTH_REDIRECT_URIS
+    (comma-separated) and COLLECTIONS_MCP_PUBLIC_URL (this server's own https://
+    base URL) makes this server additionally act as its own OAuth 2.1 Authorization
+    Server for that one pre-registered client; /mcp then accepts either the static
+    token or a token issued through that flow. See packages/collections-mcp/README.md.
     """
     if not http:
         from collections_mcp.server import run_stdio
@@ -181,7 +189,7 @@ def mcp(
     import os
 
     import uvicorn
-    from collections_mcp.http import build_asgi_app
+    from collections_mcp.http import OAuthConfig, build_asgi_app
 
     token = os.environ.get("COLLECTIONS_MCP_TOKEN")
     if token is None and not allow_anonymous:
@@ -192,8 +200,32 @@ def mcp(
         )
         raise SystemExit(2)
 
+    oauth = None
+    if not allow_anonymous:
+        oauth_client_id = os.environ.get("COLLECTIONS_MCP_OAUTH_CLIENT_ID")
+        oauth_client_secret = os.environ.get("COLLECTIONS_MCP_OAUTH_CLIENT_SECRET")
+        oauth_redirect_uris = os.environ.get("COLLECTIONS_MCP_OAUTH_REDIRECT_URIS")
+        oauth_public_url = os.environ.get("COLLECTIONS_MCP_PUBLIC_URL")
+        configured = [oauth_client_id, oauth_client_secret, oauth_redirect_uris, oauth_public_url]
+        if any(configured) and not all(configured):
+            print(
+                "error: COLLECTIONS_MCP_OAUTH_CLIENT_ID, COLLECTIONS_MCP_OAUTH_CLIENT_SECRET, "
+                "COLLECTIONS_MCP_OAUTH_REDIRECT_URIS and COLLECTIONS_MCP_PUBLIC_URL "
+                "must all be set together to enable OAuth",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        if all(configured):
+            redirect_uris = [uri.strip() for uri in oauth_redirect_uris.split(",") if uri.strip()]
+            oauth = OAuthConfig(
+                client_id=oauth_client_id,
+                client_secret=oauth_client_secret,
+                redirect_uris=redirect_uris,
+                public_url=oauth_public_url,
+            )
+
     service = _service(root, read_only=read_only, deletable=not no_delete, db=db)
-    uvicorn.run(build_asgi_app(service, token=token), host=host, port=port)
+    uvicorn.run(build_asgi_app(service, token=token, oauth=oauth), host=host, port=port)
 
 
 @app.command
