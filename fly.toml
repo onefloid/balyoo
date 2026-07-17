@@ -6,8 +6,7 @@ primary_region = "fra"
 [build]
 
 [env]
-  COLLECTIONS_MCP_WRITE_SCOPE = "collections:write"
-  # COLLECTIONS_MCP_ISSUER / _RESOURCE_URL / _AUDIENCE are set via `fly secrets set`.
+  # COLLECTIONS_MCP_TOKEN (the bearer secret) is set via `fly secrets set`.
 
 [http_service]
   internal_port = 8080
