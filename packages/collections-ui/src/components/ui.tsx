@@ -29,11 +29,28 @@ export function Chip({ label }: { label: string }) {
   );
 }
 
-/** A small coloured monogram for a collection. */
-export function Avatar({ name }: { name: string }) {
+/** A small collection avatar: a schema-provided emoji icon, else a coloured
+ * monogram. An optional hex `color` overrides the name-derived hue. */
+export function Avatar({
+  name,
+  icon,
+  color,
+}: {
+  name: string;
+  icon?: string;
+  color?: string;
+}) {
+  const style: CSSProperties = color ? { background: color } : hueStyle(name);
+  if (icon) {
+    return (
+      <span className="avatar avatar-icon" style={style} aria-hidden="true">
+        {icon}
+      </span>
+    );
+  }
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
-    <span className="avatar" style={hueStyle(name)} aria-hidden="true">
+    <span className="avatar" style={style} aria-hidden="true">
       {initial}
     </span>
   );

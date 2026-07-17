@@ -28,6 +28,7 @@ const fake: ApiClient = {
   getSchema: async () => ({
     title: "Book",
     properties: { title: { type: "string" }, author: { type: "string" } },
+    "x-collection": { icon: "📚" },
   }),
   listItems: async () => ({
     items: [
@@ -63,6 +64,11 @@ describe("read views", () => {
     renderAt("/");
     expect(await screen.findByText("books")).toBeInTheDocument();
     expect(screen.getByText("read-only")).toBeInTheDocument();
+  });
+
+  it("shows the schema-defined collection icon on the home page", async () => {
+    renderAt("/");
+    expect(await screen.findByText("📚")).toBeInTheDocument();
   });
 
   it("lists items and filters them with the client-side search box", async () => {

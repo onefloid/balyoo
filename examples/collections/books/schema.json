@@ -11,6 +11,9 @@
   },
   "required": ["title"],
   "additionalProperties": true,
+  "x-collection": {
+    "icon": "📚"
+  },
   "x-card": {
     "default": "cards",
     "title": "title",

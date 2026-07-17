@@ -11,6 +11,10 @@
   },
   "required": ["title"],
   "additionalProperties": true,
+  "x-collection": {
+    "icon": "🎬",
+    "color": "#db2777"
+  },
   "x-card": {
     "default": "list",
     "title": "title",

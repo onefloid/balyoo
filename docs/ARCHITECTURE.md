@@ -131,6 +131,12 @@ affects data validation (it is also stripped before the schema reaches RJSF). A
 viewer's List/Cards choice is remembered per collection (`localStorage`) and
 overrides the schema default.
 
+**Collection avatar.** A collection's home-page symbol is set by an optional
+`x-collection` block (`icon`, an emoji, and `color`, a hex accent) resolved by
+`resolveCollectionMeta` (`packages/collections-ui/src/collection.ts`); without it a
+coloured monogram is derived from the name. `color` is validated as a hex value
+before it reaches an inline style, so an arbitrary string cannot inject CSS.
+
 **One build, many deployments.** A runtime `config.json` selects the data source:
 the live REST API (`{"apiBase": "", "static": false}`, full CRUD) or the static
 JSON mirror (`{"apiBase": "api/", "static": true}`, GET-only, `.json`-suffixed).

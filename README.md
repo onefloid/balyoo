@@ -60,12 +60,17 @@ choice is remembered per collection and overrides the schema default.)
 
 ```jsonc
 // examples/collections/books/schema.json
+"x-collection": { "icon": "📚", "color": "#4f46e5" },   // home-page avatar (emoji + optional hex colour)
 "x-card": {
   "default": "cards",
   "title": "title", "subtitle": "author",
   "badges": ["tags"], "fields": ["year", "pages"]
 }
 ```
+
+The collection's home-page symbol is set with `x-collection` (an emoji `icon` and
+an optional hex `color`); without it, a coloured monogram is generated from the
+name. The `color` is restricted to a hex value so it is safe to use as a style.
 
 ```bash
 cd packages/collections-ui
