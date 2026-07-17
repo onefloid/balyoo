@@ -40,14 +40,17 @@ export function Avatar({
   icon?: string;
   color?: string;
 }) {
-  const style: CSSProperties = color ? { background: color } : hueStyle(name);
   if (icon) {
+    // Emoji sits on a white tile so it reads cleanly; a provided colour becomes
+    // the tile's border accent rather than a heavy background fill.
+    const style = color ? ({ borderColor: color } as CSSProperties) : undefined;
     return (
       <span className="avatar avatar-icon" style={style} aria-hidden="true">
         {icon}
       </span>
     );
   }
+  const style: CSSProperties = color ? { background: color } : hueStyle(name);
   const initial = name.trim().charAt(0).toUpperCase() || "?";
   return (
     <span className="avatar" style={style} aria-hidden="true">

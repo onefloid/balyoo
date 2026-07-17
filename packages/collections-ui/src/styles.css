@@ -227,7 +227,10 @@ h2 {
   box-shadow: 0 4px 12px hsl(var(--h, 240) 70% 50% / 0.35);
 }
 .avatar-icon {
-  font-size: 1.25rem;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  font-size: 1.35rem;
   line-height: 1;
 }
 
