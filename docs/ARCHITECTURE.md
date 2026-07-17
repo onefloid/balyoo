@@ -96,6 +96,15 @@ advertised only when capabilities allow (`--read-only` ⇒ read tools only), the
 capability rule the REST API and UI follow. Domain errors become `isError` tool
 results carrying the message (and a `SchemaValidationError`'s field list).
 
+**Transports.** `collections mcp` serves **stdio** (local hosts like Claude
+Desktop) by default. `--http` serves the remote **Streamable HTTP** transport for a
+cloud LLM (`collections_mcp.http`), secured as an **OAuth 2.1 resource server**: a
+`JwtTokenVerifier` validates the bearer JWT against the identity provider's JWKS,
+and `build_server` takes a per-request *service resolver* that maps the token's
+scopes to capabilities — a valid token grants reads, the write scope grants writes.
+The MCP package stays provider-agnostic; the CLI supplies the service factory. A
+`Dockerfile` + `fly.toml` deploy it with a durable volume.
+
 ## Static-first data layout
 
 ```
