@@ -56,6 +56,17 @@ def test_read_only_masks_write_and_delete(book_schema):
     assert service.list_items("books", Query()).total == 1
 
 
+def test_deletable_false_masks_delete_but_keeps_write(book_schema):
+    service = _service(book_schema, deletable=False)
+    caps = service.capabilities
+    assert caps.supports_write is True  # writes still allowed
+    assert caps.supports_delete is False  # but not delete
+
+    created = service.create_item("books", {"title": "Keeper"})
+    with pytest.raises(NotSupported):
+        service.delete_item("books", created.id)
+
+
 def test_update_validates_merged_result(book_schema):
     service = _service(book_schema)
     with pytest.raises(SchemaValidationError):

@@ -56,14 +56,17 @@ Configure via environment:
 |---|---|
 | `COLLECTIONS_MCP_ISSUER` | OIDC issuer URL (your identity provider) |
 | `COLLECTIONS_MCP_RESOURCE_URL` | public URL of this server (the resource / audience) |
-| `COLLECTIONS_MCP_WRITE_SCOPE` | scope granting writes (default `collections:write`) |
+| `COLLECTIONS_MCP_WRITE_SCOPE` | scope granting create/update (default `collections:write`) |
+| `COLLECTIONS_MCP_DELETE_SCOPE` | scope granting delete (default `collections:delete`) |
 | `COLLECTIONS_MCP_AUDIENCE` | token audience (default = resource URL) |
 | `COLLECTIONS_MCP_JWKS_URL` | JWKS URL (default: discovered from the issuer) |
 
 You need an **OIDC identity provider** as the authorization server (Auth0 / WorkOS
 AuthKit / Stytch / Keycloak, …). The server is IdP-agnostic — pick one that
-supports **Dynamic Client Registration** for smooth client onboarding. Register a
-`collections:write` scope/permission and grant it to whoever may write.
+supports **Dynamic Client Registration** for smooth client onboarding. Register the
+`collections:write` (and, for deletes, `collections:delete`) scope/permission and
+grant it to whoever may write. Pass `--per-user` to give each authenticated subject
+its own isolated collections (under `<root>/<hashed-subject>`).
 
 ### Deploy to Fly.io
 

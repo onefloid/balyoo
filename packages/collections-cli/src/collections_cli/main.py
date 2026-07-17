@@ -23,9 +23,13 @@ items_app = App(name="items", help="Manage items within a collection.")
 app.command(items_app)
 
 
-def _service(root: Path, *, read_only: bool) -> CollectionsService:
+def _service(
+    root: Path, *, read_only: bool, deletable: bool = True
+) -> CollectionsService:
     provider = FilesystemStorageProvider(root)
-    return CollectionsService(provider, JsonSchemaValidator(), read_only=read_only)
+    return CollectionsService(
+        provider, JsonSchemaValidator(), read_only=read_only, deletable=deletable
+    )
 
 
 @app.command(name="list")
@@ -124,18 +128,21 @@ def mcp(
     host: str = "127.0.0.1",
     port: int = 8080,
     read_only: bool = False,
+    per_user: bool = False,
     root: Path = DEFAULT_ROOT,
 ) -> None:
     """Serve collections over the Model Context Protocol.
 
     Default transport is stdio (what a local host like Claude Desktop launches).
     Add --http to serve the remote Streamable HTTP transport for a cloud LLM,
-    secured as an OAuth 2.1 resource server configured via COLLECTIONS_MCP_*
-    environment variables:
+    secured as an OAuth 2.1 resource server. With --per-user, each authenticated
+    subject gets its own isolated collections under <root>/<hashed-subject>.
+    Configured via COLLECTIONS_MCP_* environment variables:
 
       COLLECTIONS_MCP_ISSUER        OIDC issuer URL (the identity provider)
       COLLECTIONS_MCP_RESOURCE_URL  public URL of this server (the resource)
-      COLLECTIONS_MCP_WRITE_SCOPE   scope granting writes (default collections:write)
+      COLLECTIONS_MCP_WRITE_SCOPE   scope granting create/update (default collections:write)
+      COLLECTIONS_MCP_DELETE_SCOPE  scope granting delete (default collections:delete)
       COLLECTIONS_MCP_AUDIENCE      token audience (default = resource URL)
       COLLECTIONS_MCP_JWKS_URL      JWKS URL (default: discovered from the issuer)
     """
@@ -164,13 +171,29 @@ def mcp(
         issuer_url=issuer,
         resource_url=resource,
         write_scope=os.environ.get("COLLECTIONS_MCP_WRITE_SCOPE", "collections:write"),
+        delete_scope=os.environ.get("COLLECTIONS_MCP_DELETE_SCOPE", "collections:delete"),
         audience=os.environ.get("COLLECTIONS_MCP_AUDIENCE"),
         jwks_url=os.environ.get("COLLECTIONS_MCP_JWKS_URL"),
     )
+
+    import hashlib
+
     # `read_only` here forces read-only regardless of token scope; otherwise the
-    # token's scope decides per request.
-    def service_factory(scope_read_only: bool) -> CollectionsService:
-        return _service(root, read_only=read_only or scope_read_only)
+    # token's scopes decide read/write/delete per request. With --per-user the data
+    # root is namespaced by a hash of the subject (safe filesystem name, no
+    # traversal), isolating each user's collections.
+    def service_factory(
+        scope_read_only: bool, scope_no_delete: bool, subject: str | None
+    ) -> CollectionsService:
+        data_root = root
+        if per_user and subject:
+            digest = hashlib.sha256(subject.encode()).hexdigest()[:16]
+            data_root = root / digest
+        return _service(
+            data_root,
+            read_only=read_only or scope_read_only,
+            deletable=not scope_no_delete,
+        )
 
     uvicorn.run(build_asgi_app(service_factory, oauth), host=host, port=port)
 

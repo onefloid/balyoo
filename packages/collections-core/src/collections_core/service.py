@@ -25,18 +25,29 @@ class CollectionsService:
         validator: SchemaValidator | None = None,
         *,
         read_only: bool = False,
+        deletable: bool = True,
     ) -> None:
         self._provider = provider
         self._validator = validator
         self._read_only = read_only
+        self._deletable = deletable
 
     @property
     def capabilities(self) -> Capabilities:
-        """Effective capabilities = provider capabilities masked by read_only."""
+        """Effective capabilities = provider capabilities masked by policy.
+
+        ``read_only`` masks both write and delete; ``deletable=False`` additionally
+        masks delete alone, so a caller can be granted writes without the more
+        destructive delete (e.g. a token with the write scope but not the delete
+        scope).
+        """
         caps = self._provider.capabilities
+        update: dict[str, bool] = {}
         if self._read_only:
-            return caps.model_copy(update={"supports_write": False, "supports_delete": False})
-        return caps
+            update.update(supports_write=False, supports_delete=False)
+        if not self._deletable:
+            update["supports_delete"] = False
+        return caps.model_copy(update=update) if update else caps
 
     # -- collections -----------------------------------------------------
     def list_collections(self) -> list[CollectionInfo]:

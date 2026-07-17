@@ -24,17 +24,23 @@ core, not the other way around.
 
 | Package                    | Import root              | Responsibility |
 |----------------------------|--------------------------|----------------|
-| `collections-core`         | `collections_core`       | Models, capabilities, interfaces, errors, `CollectionsService`. Only depends on pydantic. |
+| `collections-core`         | `collections_core`       | Models, capabilities, interfaces, errors, `CollectionsService`, shared query engine (`query.run_query`). Only depends on pydantic. |
 | `collections-schema`       | `collections_schema`     | `JsonSchemaValidator` (implements `SchemaValidator`). |
-| `collections-filesystem`   | `collections_filesystem` | `FilesystemStorageProvider` — full CRUD + in-memory query/search. |
+| `collections-filesystem`   | `collections_filesystem` | `FilesystemStorageProvider` — full CRUD, ids stored as JSON files. |
+| `collections-sqlite`       | `collections_sqlite`     | `SqliteStorageProvider` — durable, transactional CRUD in a SQLite database. |
 | `collections-rest`         | `collections_rest`       | `create_app(service)` — fully generic FastAPI. |
-| `collections-mcp`          | `collections_mcp`        | MCP server (stdio) exposing every collection as tools, generated from schemas. |
+| `collections-mcp`          | `collections_mcp`        | MCP server (stdio + OAuth-secured HTTP) exposing every collection as tools, generated from schemas. |
 | `collections-static`       | `collections_static`     | Static export: JSON API mirror + a `config.json` for the UI. |
 | `collections-ui`           | `collections_ui` (TS)    | Generic React/Vite frontend: table, search, detail, schema-generated create/edit (RJSF). The one TypeScript package. |
 | `collections-cli`          | `collections_cli`        | cyclopts CLI; composition layer that wires everything together. |
 
-Planned (placeholder directories exist): `collections-sqlite`,
-`collections-postgres`, `collections-search-lunr`, `collections-auth-basic`.
+Both storage providers reuse `collections_core.query.run_query` for
+filter/search/sort/paginate, so results are identical across backends. Switching a
+deployment from the filesystem provider to SQLite needs no change to any adapter —
+the REST API, UI and MCP server depend only on the core interfaces.
+
+Planned (placeholder directories exist): `collections-postgres`,
+`collections-search-lunr`, `collections-auth-basic`.
 
 ## Key ideas
 
@@ -99,11 +105,15 @@ results carrying the message (and a `SchemaValidationError`'s field list).
 **Transports.** `collections mcp` serves **stdio** (local hosts like Claude
 Desktop) by default. `--http` serves the remote **Streamable HTTP** transport for a
 cloud LLM (`collections_mcp.http`), secured as an **OAuth 2.1 resource server**: a
-`JwtTokenVerifier` validates the bearer JWT against the identity provider's JWKS,
-and `build_server` takes a per-request *service resolver* that maps the token's
-scopes to capabilities — a valid token grants reads, the write scope grants writes.
-The MCP package stays provider-agnostic; the CLI supplies the service factory. A
-`Dockerfile` + `fly.toml` deploy it with a durable volume.
+`JwtTokenVerifier` validates the bearer JWT against the identity provider's JWKS
+(discovered lazily so a brief IdP outage doesn't stop the server booting), and
+`build_server` takes a per-request *service resolver* that maps the token's scopes
+to capabilities — a valid token grants reads, the **write scope** grants
+create/update, and the **delete scope** grants delete. With `--per-user` the data
+root is namespaced by a hash of the token subject, isolating each user's
+collections. The MCP package stays provider-agnostic; the CLI supplies the service
+factory. A `Dockerfile` (non-root, uv-cached) + `fly.toml` deploy it with a durable
+volume, and a `/health` endpoint backs the platform health check.
 
 ## Static-first data layout
 
