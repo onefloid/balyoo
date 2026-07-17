@@ -42,12 +42,23 @@ uv run collections export --root examples/collections --out dist
 
 ## Web UI (`collections-ui`)
 
-A single, fully generic React frontend — table, search, detail, and
+A single, fully generic React frontend — a **list** (table) and a modern **card**
+view (toggle per collection, remembered across visits), item detail, and
 schema-generated **create/edit** forms (via [RJSF](https://rjsf-team.github.io/react-jsonschema-form/)).
 It talks only to the generic API and adapts to the reported capabilities: on a
 read-only deployment it shows no write controls. **One build serves every
 deployment**; a runtime `config.json` tells it whether it is talking to the live
 REST API or the static JSON mirror.
+
+Each card's contents are **schema-driven**: a collection may add an optional
+`x-card` block to its JSON Schema to choose the title, subtitle, image, badge and
+field properties shown on the tile; without it a sensible layout is derived from
+the schema. `x-card` is a custom keyword, ignored by JSON Schema validators.
+
+```jsonc
+// examples/collections/books/schema.json
+"x-card": { "title": "title", "subtitle": "author", "badges": ["tags"], "fields": ["year", "pages"] }
+```
 
 ```bash
 cd packages/collections-ui

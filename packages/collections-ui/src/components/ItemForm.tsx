@@ -12,10 +12,12 @@ import type { Item, JsonSchema } from "../types";
 import { Breadcrumb, ErrorBox, Loading } from "./ui";
 
 /** Drop the `$schema` meta reference (draft 2020-12) so RJSF's AJV8 (draft-07)
- * validates the field subset our schemas use without meta-schema resolution. */
+ * validates the field subset our schemas use without meta-schema resolution, and
+ * the `x-card` presentation hint, which is not part of the data schema. */
 function forForm(schema: JsonSchema): RJSFSchema {
   const copy = { ...schema };
   delete copy.$schema;
+  delete copy["x-card"];
   return copy as RJSFSchema;
 }
 
