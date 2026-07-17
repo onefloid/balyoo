@@ -7,7 +7,7 @@ specific use case (books, movies, …) — everything is driven by JSON Schema.
 ## Layers
 
 ```
-        REST API        (later: MCP server, Web UI, …)
+        REST API · Web UI        (later: MCP server, …)
              │
         Collections Core            ← business logic only; knows only interfaces
              │
@@ -28,10 +28,11 @@ core, not the other way around.
 | `collections-schema`       | `collections_schema`     | `JsonSchemaValidator` (implements `SchemaValidator`). |
 | `collections-filesystem`   | `collections_filesystem` | `FilesystemStorageProvider` — full CRUD + in-memory query/search. |
 | `collections-rest`         | `collections_rest`       | `create_app(service)` — fully generic FastAPI. |
-| `collections-static`       | `collections_static`     | Static site generator: JSON API mirror + minimal read-only UI. |
+| `collections-static`       | `collections_static`     | Static export: JSON API mirror + a `config.json` for the UI. |
+| `collections-ui`           | `collections_ui` (TS)    | Generic React/Vite frontend: table, search, detail, schema-generated create/edit (RJSF). The one TypeScript package. |
 | `collections-cli`          | `collections_cli`        | cyclopts CLI; composition layer that wires everything together. |
 
-Planned (placeholder directories exist): `collections-mcp`, `collections-ui` (TS),
+Planned (placeholder directories exist): `collections-mcp`,
 `collections-sqlite`, `collections-postgres`, `collections-search-lunr`,
 `collections-auth-basic`.
 
@@ -103,11 +104,34 @@ writes a static site under `dist/`:
   `<c>/items/<id>.json`). Index/manifest files let a client discover collections
   and item ids without a directory listing. The bodies are `model_dump()` of the
   same pydantic models the REST API returns, so the shape is identical.
-- `dist/{index.html,app.js,style.css}` — a minimal, zero-build, schema-driven
-  read-only UI that consumes the mirror. It is a small precursor of the deferred
-  `collections-ui` (TS); export runs with `read_only=True`, so capabilities report
-  no writes and the UI shows none.
+- `dist/config.json` — `{"apiBase": "api/", "static": true}`, read at runtime by
+  `collections-ui` so it targets the mirror in read-only mode. Export runs with
+  `read_only=True`, so capabilities report no writes and the UI shows none.
 
 The generator only calls existing `CollectionsService` methods — no business logic
-is duplicated. `.github/workflows/deploy-pages.yml` runs the export and deploys
-`dist/` to GitHub Pages.
+is duplicated, and it never clobbers files already in the output directory (the
+UI bundle is placed there first). `.github/workflows/deploy-pages.yml` builds the
+UI, assembles it with the mirror, and deploys `dist/` to GitHub Pages.
+
+## Web UI (`collections-ui`)
+
+A single React/Vite/TypeScript app, fully generic: every view — collection list,
+table with client-side search/sort, item detail, and **create/edit forms
+generated from JSON Schema** (via RJSF) — works for any collection. It depends only
+on the generic API.
+
+**One build, many deployments.** A runtime `config.json` selects the data source:
+the live REST API (`{"apiBase": "", "static": false}`, full CRUD) or the static
+JSON mirror (`{"apiBase": "api/", "static": true}`, GET-only, `.json`-suffixed).
+An `ApiClient` abstraction (`StaticJsonClient` / `RestClient`) hides the
+difference; reads are identical, and the app builds with a relative base so the
+same bundle runs at a domain root or a project sub-path.
+
+**Capability-adaptive.** Write controls (New / Edit / Delete) render only when the
+collection's reported capabilities allow them. Because the static export advertises
+no writes, the same UI is safely read-only there. The server remains the
+authoritative validator; RJSF/AJV is a client-side convenience.
+
+A read-write deployment can serve the built bundle from the API origin with
+`collections serve --ui <dir>` (a `StaticFiles` mount registered after the API
+routes), so no separate host or CORS setup is needed.

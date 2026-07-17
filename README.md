@@ -5,13 +5,14 @@
 Collections is a generic platform for storing, validating, searching and serving
 arbitrary structured objects — books, movies, employees, products, APIs, … You
 describe a collection with a JSON Schema, pick a storage provider, and the
-validation, CRUD, REST API (and, later, MCP server and web UI) come for free.
+validation, CRUD, REST API and web UI (and, later, an MCP server) come for free.
 
 > **Milestone 1 (this repo):** a working vertical slice in Python — core, schema
 > validation, a filesystem storage provider with full CRUD, a fully generic REST
 > API, and a CLI, with example collections. See
 > [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design and the
-> roadmap (MCP, UI, SQLite/Postgres, pluggable search & auth).
+> roadmap (MCP, SQLite/Postgres, pluggable search & auth). A generic React web UI
+> (`collections-ui`) is now included.
 
 ## Quick start
 
@@ -32,24 +33,48 @@ uv run collections serve
 # Same API, read-only — writes return HTTP 405, reads still work
 uv run collections serve --read-only
 
-# Export a static, server-less site (JSON API mirror + minimal read-only UI)
+# Serve the API *and* the web UI from one origin (build the UI first, see below)
+uv run collections serve --ui packages/collections-ui/dist
+
+# Export the JSON API mirror + UI runtime config for static hosting
 uv run collections export --root examples/collections --out dist
-python -m http.server -d dist 8080   # then open http://localhost:8080/
 ```
+
+## Web UI (`collections-ui`)
+
+A single, fully generic React frontend — table, search, detail, and
+schema-generated **create/edit** forms (via [RJSF](https://rjsf-team.github.io/react-jsonschema-form/)).
+It talks only to the generic API and adapts to the reported capabilities: on a
+read-only deployment it shows no write controls. **One build serves every
+deployment**; a runtime `config.json` tells it whether it is talking to the live
+REST API or the static JSON mirror.
+
+```bash
+cd packages/collections-ui
+pnpm install          # Node ≥ 20 + pnpm
+pnpm test             # vitest
+pnpm build            # -> packages/collections-ui/dist
+
+# Dev: UI on :5173 proxying to a live API on :8000
+uv run collections serve            # in one terminal
+pnpm dev                            # in another, then open http://localhost:5173/
+```
+
+For a read-write deployment, serve the built bundle from the same origin as the
+API (no CORS): `uv run collections serve --ui packages/collections-ui/dist`.
 
 ## Static deployment (GitHub Pages)
 
-`collections export` produces a fully static site — no server, no database:
+For read-only static hosting there is no server and no database:
 
-- `dist/api/…` — JSON files whose layout mirrors the REST routes
-  (`collections.json`, `<c>/schema.json`, `<c>/items.json`, `<c>/items/<id>.json`),
-  so the same client works against a live server or a static host.
-- `dist/index.html` — a minimal, schema-driven, read-only browser (collection
-  list, table, client-side search, detail view). Exported with `read_only=True`,
-  so it advertises no write capabilities.
+- `collections export` writes `dist/api/…` — JSON files whose layout mirrors the
+  REST routes (`collections.json`, `<c>/schema.json`, `<c>/items.json`,
+  `<c>/items/<id>.json`) — plus `dist/config.json`, which points the UI at that
+  mirror in read-only mode (exported with `read_only=True`, so no write controls).
+- The built `collections-ui` bundle is laid on top of that mirror.
 
 Pushing to `main` runs [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml),
-which builds the site and deploys it to GitHub Pages.
+which builds the UI, assembles it with the JSON mirror, and deploys to GitHub Pages.
 
 > **One-time setup:** in the repo, go to **Settings → Pages → Build and
 > deployment → Source** and select **GitHub Actions**. The site is then published
@@ -91,7 +116,7 @@ Claude in the loop) is planned but deliberately deferred.
 ## How it fits together
 
 ```
-        REST API / CLI          (later: MCP server, Web UI)
+    REST API / CLI / Web UI      (later: MCP server)
              │
         Collections Core        ← business logic; depends only on interfaces
              │
@@ -111,6 +136,12 @@ share the exact same API and UI. Details in
 uv sync
 uv run ruff check .
 uv run pytest
+
+# Web UI (Node ≥ 20 + pnpm)
+pnpm --dir packages/collections-ui install
+pnpm --dir packages/collections-ui test
+pnpm --dir packages/collections-ui lint
+pnpm --dir packages/collections-ui build
 ```
 
 ## License

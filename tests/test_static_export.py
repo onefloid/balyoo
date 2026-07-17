@@ -1,4 +1,4 @@
-"""Static site export: the JSON mirror matches the service, and assets ship."""
+"""Static site export: the JSON mirror matches the service, and config ships."""
 
 from __future__ import annotations
 
@@ -48,9 +48,26 @@ def test_schema_and_items_mirror(examples_copy, tmp_path):
     assert dune["data"]["title"] == "Dune"
 
 
-def test_ui_assets_are_written(examples_copy, tmp_path):
+def test_ui_config_is_written(examples_copy, tmp_path):
     out = tmp_path / "dist"
     _export(examples_copy, out)
-    for name in ("index.html", "app.js", "style.css"):
-        assert (out / name).is_file(), name
-    assert "api/" in (out / "app.js").read_text(encoding="utf-8")
+
+    config = _load(out / "config.json")
+    # The UI reads this to target the mirror in read-only static mode.
+    assert config == {"apiBase": "api/", "static": True}
+
+
+def test_export_leaves_existing_ui_files_untouched(examples_copy, tmp_path):
+    # The Pages workflow lays the built collections-ui bundle into the output dir
+    # first; the export must only add api/** and config.json, never clobber it.
+    out = tmp_path / "dist"
+    out.mkdir()
+    (out / "index.html").write_text("<!-- built UI -->", encoding="utf-8")
+    (out / "assets").mkdir()
+    (out / "assets" / "app.js").write_text("console.log('ui')", encoding="utf-8")
+
+    _export(examples_copy, out)
+
+    assert (out / "index.html").read_text(encoding="utf-8") == "<!-- built UI -->"
+    assert (out / "assets" / "app.js").is_file()
+    assert (out / "api" / "collections.json").is_file()

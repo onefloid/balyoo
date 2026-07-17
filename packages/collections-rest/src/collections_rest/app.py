@@ -8,6 +8,7 @@ the service, and domain errors are mapped to HTTP status codes here.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from collections_core.errors import (
@@ -23,11 +24,14 @@ from collections_core.service import CollectionsService
 from fastapi import FastAPI, Request
 from fastapi import Query as QueryParam
 from fastapi.responses import JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 _RESERVED_PARAMS = {"limit", "offset", "sort", "order", "q"}
 
 
-def create_app(service: CollectionsService) -> FastAPI:
+def create_app(
+    service: CollectionsService, *, ui_dir: str | Path | None = None
+) -> FastAPI:
     app = FastAPI(
         title="Collections API",
         version="0.1.0",
@@ -85,6 +89,13 @@ def create_app(service: CollectionsService) -> FastAPI:
     def delete_item(collection: str, item_id: str) -> Response:
         service.delete_item(collection, item_id)
         return Response(status_code=204)
+
+    # Optionally serve the built collections-ui bundle from the same origin, so a
+    # read-write deployment needs no separate host and no CORS. The API routes above
+    # are registered first and take precedence; this catch-all only serves the UI's
+    # static files (index.html, assets, and its live-mode config.json).
+    if ui_dir is not None:
+        app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
 
     return app
 

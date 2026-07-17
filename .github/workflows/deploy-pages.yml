@@ -28,10 +28,28 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
-      - name: Sync workspace
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: packages/collections-ui/pnpm-lock.yaml
+      - name: Sync Python workspace
         run: uv sync
-      - name: Export static site
-        run: uv run collections export --root examples/collections --out dist
+      - name: Install UI dependencies
+        run: pnpm --dir packages/collections-ui install --frozen-lockfile
+      - name: Build UI
+        run: pnpm --dir packages/collections-ui build
+      - name: Assemble site (UI bundle + JSON mirror + config.json)
+        run: |
+          rm -rf dist
+          mkdir dist
+          cp -r packages/collections-ui/dist/. dist/
+          uv run collections export --root examples/collections --out dist
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
