@@ -86,6 +86,45 @@ def test_anonymous_mode_needs_no_token(examples_copy):
         assert client.post("/mcp", **_initialize()).status_code == 200
 
 
+# -- co-hosted public REST API (--rest) --------------------------------------
+def _rest_client(root, *, token=TOKEN) -> TestClient:
+    return TestClient(
+        build_asgi_app(_service(root), token=token, rest_service=_service(root, read_only=True))
+    )
+
+
+def test_rest_api_is_public(examples_copy):
+    """The co-hosted REST API is reachable without the /mcp bearer token."""
+    with _rest_client(examples_copy) as client:
+        res = client.get("/collections")
+        assert res.status_code == 200
+        assert any(c["name"] == "books" for c in res.json())
+
+
+def test_rest_api_is_read_only(examples_copy):
+    with _rest_client(examples_copy) as client:
+        res = client.post("/collections/books/items", json={"id": "x", "title": "T"})
+        assert res.status_code == 405
+
+
+def test_rest_api_sends_cors_headers(examples_copy):
+    with _rest_client(examples_copy) as client:
+        res = client.get("/collections", headers={"Origin": "https://example.com"})
+        assert res.headers.get("access-control-allow-origin") == "*"
+
+
+def test_mcp_still_requires_token_when_rest_is_enabled(examples_copy):
+    with _rest_client(examples_copy) as client:
+        assert client.post("/mcp", **_initialize()).status_code == 401
+        ok = _initialize({"Authorization": f"Bearer {TOKEN}"})
+        assert client.post("/mcp", **ok).status_code == 200
+
+
+def test_rest_api_absent_without_rest_service(examples_copy):
+    with _client(examples_copy) as client:
+        assert client.get("/collections").status_code == 404
+
+
 # -- flag-driven capabilities ------------------------------------------------
 def _tool_names(root, **caps) -> set[str]:
     from collections_mcp.server import build_tools

@@ -346,7 +346,11 @@ class _LenientClientAuthenticator:
 
 
 def build_asgi_app(
-    service: CollectionsService, *, token: str | None, oauth: OAuthConfig | None = None
+    service: CollectionsService,
+    *,
+    token: str | None,
+    oauth: OAuthConfig | None = None,
+    rest_service: CollectionsService | None = None,
 ) -> ASGIApp:
     """Build the Streamable HTTP MCP app, served at ``/mcp``.
 
@@ -356,6 +360,12 @@ def build_asgi_app(
     this server additionally becomes its own OAuth 2.1 Authorization Server for
     that one client (see :class:`SingleClientOAuthProvider`) — ``/mcp`` then
     accepts either the static ``token`` or a token issued through that flow.
+
+    ``rest_service`` (when given) additionally mounts the generic REST API under
+    ``/collections`` in this same process, sharing the same storage backend. It is
+    served **without** the ``/mcp`` bearer/OAuth gate — pass a read-only service if
+    the REST surface should be public — with permissive CORS so browser clients on
+    other origins can read it.
 
     ``/mcp`` is dispatched directly (not via a Starlette ``Mount``, whose route
     pattern requires a trailing path segment): a bare ``POST /mcp`` — the exact
@@ -432,10 +442,23 @@ def build_asgi_app(
 
     other_routes_app = Starlette(routes=routes, lifespan=lifespan)
 
+    rest_app: ASGIApp | None = None
+    if rest_service is not None:
+        from collections_rest.app import create_app
+
+        rest_app = create_app(rest_service, cors_origins=["*"])
+
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["path"] in ("/mcp", "/mcp/"):
-            await mcp_app(scope, receive, send)
-            return
+        if scope["type"] == "http":
+            path = scope["path"]
+            if path in ("/mcp", "/mcp/"):
+                await mcp_app(scope, receive, send)
+                return
+            if rest_app is not None and (
+                path == "/collections" or path.startswith("/collections/")
+            ):
+                await rest_app(scope, receive, send)
+                return
         await other_routes_app(scope, receive, send)
 
     return app

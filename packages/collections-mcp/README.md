@@ -58,6 +58,14 @@ flags, not the token:
 | `--read-only` | read tools only |
 | `--no-delete` | read + create/update, but no `delete_item` |
 | `--allow-anonymous` | serve `/mcp` without a token (no authentication) |
+| `--rest` | also serve the read-only REST API at `/collections` (public) |
+
+`--rest` (only valid with `--http`) additionally exposes the generic REST API
+under `/collections` in the *same* process and against the *same* backend —
+read-only and **without** the `/mcp` bearer token, with open CORS so browsers on
+other origins can read it. SQLite lives on a single Fly volume that only one
+machine can mount, so co-hosting REST here avoids a second container and volume;
+switch to a separate app only when you move to a networked database.
 
 Configure via environment:
 

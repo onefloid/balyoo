@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 dependencies = [
     "collections-core",
+    "collections-rest",
     "mcp>=1.2",
     "starlette>=0.40",
 ]
@@ -19,3 +20,4 @@ packages = ["src/collections_mcp"]
 
 [tool.uv.sources]
 collections-core = { workspace = true }
+collections-rest = { workspace = true }

@@ -20,11 +20,14 @@ COPY docker-entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Data is the durable SQLite database on the mounted volume (see fly.toml); access
-# is protected by the bearer token in COLLECTIONS_MCP_TOKEN (a `fly secrets` value),
-# and capabilities are set by the flags below (add --read-only or --no-delete to
-# restrict). Run the venv binary directly so no uv re-sync is attempted as the
-# unprivileged user. Seed the empty database with `collections migrate` (see
+# Data is the durable SQLite database on the mounted volume (see fly.toml); the
+# /mcp endpoint is protected by the bearer token in COLLECTIONS_MCP_TOKEN (a
+# `fly secrets` value), and capabilities are set by the flags below (add
+# --read-only or --no-delete to restrict). --rest also serves the generic REST API
+# at /collections in the same process, read-only and public (SQLite lives on a
+# single Fly volume that only one machine can mount, so REST and MCP must share the
+# same container). Run the venv binary directly so no uv re-sync is attempted as
+# the unprivileged user. Seed the empty database with `collections migrate` (see
 # packages/collections-mcp/README.md).
-CMD ["/app/.venv/bin/collections", "mcp", "--http", \
+CMD ["/app/.venv/bin/collections", "mcp", "--http", "--rest", \
      "--host", "0.0.0.0", "--port", "8080", "--db", "/data/collections.db"]

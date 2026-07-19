@@ -159,6 +159,7 @@ def mcp(
     read_only: bool = False,
     no_delete: bool = False,
     allow_anonymous: bool = False,
+    rest: bool = False,
     db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
@@ -172,6 +173,11 @@ def mcp(
     Pass --allow-anonymous to serve without a token (no authentication). Pass --db
     <path> to use the durable SQLite backend instead of the filesystem root.
 
+    Add --rest (only with --http) to additionally serve the generic REST API under
+    /collections in the same process and against the same backend. It is served
+    read-only and without the /mcp bearer token — a public, browser-readable mirror
+    of the data (CORS is open) — so no separate container or volume is needed.
+
     Hosts that require a real OAuth flow (ChatGPT, Claude.ai custom connectors)
     can't use a bare bearer token. Setting all four of COLLECTIONS_MCP_OAUTH_CLIENT_ID,
     COLLECTIONS_MCP_OAUTH_CLIENT_SECRET, COLLECTIONS_MCP_OAUTH_REDIRECT_URIS
@@ -180,6 +186,10 @@ def mcp(
     Server for that one pre-registered client; /mcp then accepts either the static
     token or a token issued through that flow. See packages/collections-mcp/README.md.
     """
+    if rest and not http:
+        print("error: --rest only applies with --http", file=sys.stderr)
+        raise SystemExit(2)
+
     if not http:
         from collections_mcp.server import run_stdio
 
@@ -225,7 +235,12 @@ def mcp(
             )
 
     service = _service(root, read_only=read_only, deletable=not no_delete, db=db)
-    uvicorn.run(build_asgi_app(service, token=token, oauth=oauth), host=host, port=port)
+    rest_service = _service(root, read_only=True, db=db) if rest else None
+    uvicorn.run(
+        build_asgi_app(service, token=token, oauth=oauth, rest_service=rest_service),
+        host=host,
+        port=port,
+    )
 
 
 @app.command
