@@ -278,6 +278,7 @@ version = "0.1.0"
 source = { editable = "packages/collections-mcp" }
 dependencies = [
     { name = "collections-core" },
+    { name = "collections-rest" },
     { name = "mcp" },
     { name = "starlette" },
 ]
@@ -285,6 +286,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "collections-core", editable = "packages/collections-core" },
+    { name = "collections-rest", editable = "packages/collections-rest" },
     { name = "mcp", specifier = ">=1.2" },
     { name = "starlette", specifier = ">=0.40" },
 ]

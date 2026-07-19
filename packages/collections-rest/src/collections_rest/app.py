@@ -30,13 +30,28 @@ _RESERVED_PARAMS = {"limit", "offset", "sort", "order", "q"}
 
 
 def create_app(
-    service: CollectionsService, *, ui_dir: str | Path | None = None
+    service: CollectionsService,
+    *,
+    ui_dir: str | Path | None = None,
+    cors_origins: list[str] | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Collections API",
         version="0.1.0",
         description="Generic, schema-driven REST API for arbitrary collections.",
     )
+    # A public, cross-origin API (e.g. served next to the MCP server for browser
+    # clients on other origins) needs CORS. Left off by default so a same-origin
+    # deployment adds no headers; pass ["*"] to allow any origin.
+    if cors_origins is not None:
+        from fastapi.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_origins,
+            allow_methods=["GET", "HEAD", "OPTIONS"],
+            allow_headers=["*"],
+        )
     _register_error_handlers(app)
 
     @app.get("/collections")
