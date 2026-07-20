@@ -51,10 +51,43 @@ jobs:
     concurrency:
       group: fly-deploy
       cancel-in-progress: false
+    env:
+      # Pin a flyctl version for reproducible deploys, e.g. "v0.3.0"; leave empty
+      # to track the latest release. (The install/deploy steps below fetch from
+      # fly.io directly and retry, rather than the setup-flyctl action whose one-shot
+      # download of the binary intermittently failed with ECONNRESET.)
+      FLYCTL_VERSION: ""
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Deploy to Fly.io
-        run: flyctl deploy --remote-only
+      - name: Install flyctl (retry on transient network errors)
+        run: |
+          install_flyctl() {
+            if [ -n "$FLYCTL_VERSION" ]; then
+              curl -fsSL https://fly.io/install.sh | sh -s "$FLYCTL_VERSION"
+            else
+              curl -fsSL https://fly.io/install.sh | sh
+            fi
+          }
+          for attempt in 1 2 3 4 5; do
+            if install_flyctl; then
+              echo "$HOME/.fly/bin" >> "$GITHUB_PATH"
+              exit 0
+            fi
+            echo "flyctl install attempt $attempt failed; retrying in 15s..."
+            sleep 15
+          done
+          echo "flyctl install failed after 5 attempts" >&2
+          exit 1
+      - name: Deploy to Fly.io (retry on transient network errors)
+        run: |
+          for attempt in 1 2 3; do
+            if flyctl deploy --remote-only; then
+              exit 0
+            fi
+            echo "deploy attempt $attempt failed; retrying in 30s..."
+            sleep 30
+          done
+          echo "deploy failed after 3 attempts" >&2
+          exit 1
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
