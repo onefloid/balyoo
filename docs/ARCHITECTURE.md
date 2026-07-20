@@ -128,7 +128,7 @@ the SDK's own). `/authorize` auto-approves immediately, since the client secret
 required at `/token` is the real gate for a single-owner service; issued
 authorization codes and access/refresh tokens are HMAC-signed, self-verifying
 strings rather than server-side state, so they survive this process restarting
-(Fly.io's scale-to-zero rebuilds the machine fresh on the next request). `/mcp`
+(a Fly.io redeploy, crash, or manual restart rebuilds the machine fresh). `/mcp`
 then accepts either the static token or a token issued through this flow —
 OAuth is strictly additive on top of the token, never a replacement for it.
 

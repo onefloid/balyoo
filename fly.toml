@@ -16,9 +16,18 @@ primary_region = "fra"
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  # Keep the single machine warm instead of scaling to zero. This app can only
+  # ever run one machine (the SQLite volume below mounts to exactly one), so
+  # scale-to-zero saves almost nothing but forces a cold start on every request
+  # after idle. Those cold starts route through Fly's Machines API to auto-start
+  # the stopped machine, which regularly hits `[PM01] machines API returned an
+  # error: "rate limit exceeded"` and then retries with backoff — leaving the
+  # server unreachable for up to ~5 minutes. Staying always-on avoids the
+  # start call entirely. auto_start is kept as a safety net in case the machine
+  # ever does stop (e.g. after a crash or manual stop).
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
 # Durable storage for the SQLite database; mounted at /data, used as
 # /data/collections.db. A Fly volume can only be attached to one machine at a time,
