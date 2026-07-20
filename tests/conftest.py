@@ -13,7 +13,12 @@ from typing import Any
 
 import pytest
 from collections_core.capabilities import Capabilities
-from collections_core.errors import CollectionNotFound, Conflict, ItemNotFound
+from collections_core.errors import (
+    CollectionExists,
+    CollectionNotFound,
+    Conflict,
+    ItemNotFound,
+)
 from collections_core.models import Item, Page, Query
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples" / "collections"
@@ -48,6 +53,22 @@ class InMemoryProvider:
         if collection not in self._schemas:
             raise CollectionNotFound(collection)
         return self._schemas[collection]
+
+    def create_collection(self, collection: str, schema: dict[str, Any]) -> None:
+        if collection in self._schemas:
+            raise CollectionExists(collection)
+        self._schemas[collection] = schema
+
+    def update_schema(self, collection: str, schema: dict[str, Any]) -> None:
+        if collection not in self._schemas:
+            raise CollectionNotFound(collection)
+        self._schemas[collection] = schema
+
+    def delete_collection(self, collection: str) -> None:
+        if collection not in self._schemas:
+            raise CollectionNotFound(collection)
+        del self._schemas[collection]
+        self._items.pop(collection, None)
 
     def list_items(self, collection: str, query: Query) -> Page[Item]:
         self.get_schema(collection)

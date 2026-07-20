@@ -3,9 +3,12 @@
 The tool set is generated from the platform itself: generic read tools plus, for
 each collection, ``create_<collection>`` / ``update_<collection>`` whose input
 schema is the collection's own JSON Schema — so an assistant gets typed, validated
-write tools rather than an opaque "pass some JSON" call. Writes are advertised only
-when the service's capabilities allow them (a ``--read-only`` server is read-only
-to the assistant too).
+write tools rather than an opaque "pass some JSON" call. Collection management
+tools (``create_collection``, ``update_schema``, ``delete_collection``) let an
+assistant define new collections and their schemas; a newly created collection's
+typed write tools then appear automatically. Writes are advertised only when the
+service's capabilities allow them (a ``--read-only`` server is read-only to the
+assistant too).
 
 The tool logic lives in the transport-agnostic :func:`build_tools` /
 :func:`dispatch` so it can be unit-tested without a live MCP client; the stdio
@@ -32,6 +35,48 @@ _SCHEMA_META = ("$schema", "x-card", "x-collection")
 
 _CREATE = "create_"
 _UPDATE = "update_"
+
+# Collection-management tool names. Exact matches, checked before the ``create_``/
+# ``update_`` prefix routing so they never collide with the per-collection tools.
+_CREATE_COLLECTION = "create_collection"
+_UPDATE_SCHEMA = "update_schema"
+_DELETE_COLLECTION = "delete_collection"
+
+# Doubles as the assistant's guidance for authoring a schema.
+_CREATE_COLLECTION_DESCRIPTION = """\
+Create a new collection from a JSON Schema. Use this to help a user model \
+whatever they want to collect, then define it here.
+
+`schema` is a JSON Schema (draft 2020-12) describing one item:
+- `type` must be `object`; put the item's fields under `properties`.
+- `required` lists the fields that must always be present.
+- Field types: `string`, `integer`, `number`, `boolean`, `array` (with `items`), \
+`object`. Add constraints like `minimum`, `enum`, or `format` where useful.
+- Optional presentation keys the UI understands:
+  - `x-collection`: `{ "icon": "📚", "color": "#8b5cf6" }` (emoji icon + accent).
+  - `x-card`: how to render an item card, e.g. \
+`{ "default": "cards", "title": "<field>", "subtitle": "<field>", \
+"badges": ["<field>"], "fields": ["<field>"] }`.
+
+Example `schema` for a "books" collection:
+{
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "author": { "type": "string" },
+    "year": { "type": "integer" },
+    "tags": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["title"],
+  "x-collection": { "icon": "📚" },
+  "x-card": { "default": "cards", "title": "title", "subtitle": "author", \
+"badges": ["tags"], "fields": ["year"] }
+}
+
+Once created, typed `create_<name>` / `update_<name>` tools for the new \
+collection appear automatically. The schema is stored as a versioned file; \
+publishing changes to a live site still goes through the normal git flow.\
+"""
 
 
 # -- tool definitions ----------------------------------------------------------
@@ -97,6 +142,45 @@ def build_tools(service: CollectionsService) -> list[types.Tool]:
     ]
 
     if caps.supports_write:
+        tools.append(
+            types.Tool(
+                name=_CREATE_COLLECTION,
+                description=_CREATE_COLLECTION_DESCRIPTION,
+                inputSchema=_obj(
+                    {
+                        "name": {
+                            "type": "string",
+                            "description": "Collection name (a single path segment).",
+                        },
+                        "schema": {
+                            "type": "object",
+                            "description": "The collection's JSON Schema (draft 2020-12).",
+                        },
+                    },
+                    ["name", "schema"],
+                ),
+            )
+        )
+        tools.append(
+            types.Tool(
+                name=_UPDATE_SCHEMA,
+                description=(
+                    "Replace a collection's JSON Schema. Same schema format as "
+                    "create_collection. Returns the ids of any existing items that "
+                    "no longer conform to the new schema (a non-blocking warning)."
+                ),
+                inputSchema=_obj(
+                    {
+                        "collection": {"type": "string"},
+                        "schema": {
+                            "type": "object",
+                            "description": "The new JSON Schema (draft 2020-12).",
+                        },
+                    },
+                    ["collection", "schema"],
+                ),
+            )
+        )
         for info in service.list_collections():
             schema = service.get_schema(info.name)
             tools.append(
@@ -126,6 +210,16 @@ def build_tools(service: CollectionsService) -> list[types.Tool]:
                     {"collection": {"type": "string"}, "id": {"type": "string"}},
                     ["collection", "id"],
                 ),
+            )
+        )
+        tools.append(
+            types.Tool(
+                name=_DELETE_COLLECTION,
+                description=(
+                    "Delete an entire collection, including its schema and all of "
+                    "its items. This cannot be undone."
+                ),
+                inputSchema=_obj({"collection": {"type": "string"}}, ["collection"]),
             )
         )
 
@@ -159,6 +253,22 @@ def dispatch(service: CollectionsService, name: str, arguments: dict[str, Any]) 
     if name == "delete_item":
         service.delete_item(args["collection"], args["id"])
         return {"deleted": f"{args['collection']}/{args['id']}"}
+    # Collection management: exact-match before the create_/update_ prefix routing.
+    if name == _CREATE_COLLECTION:
+        service.create_collection(args["name"], args["schema"])
+        return {"created": args["name"]}
+    if name == _UPDATE_SCHEMA:
+        invalid = service.update_schema(args["collection"], args["schema"])
+        result: dict[str, Any] = {"updated": args["collection"]}
+        if invalid:
+            result["warning"] = (
+                f"{len(invalid)} existing item(s) no longer conform to the new schema."
+            )
+            result["invalid_items"] = invalid
+        return result
+    if name == _DELETE_COLLECTION:
+        service.delete_collection(args["collection"])
+        return {"deleted_collection": args["collection"]}
     if name.startswith(_CREATE):
         collection = name[len(_CREATE) :]
         return service.create_item(collection, dict(args)).model_dump()
