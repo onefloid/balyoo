@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from collections_core.errors import CollectionsError, Conflict
+from collections_core.errors import CollectionExists, CollectionsError, Conflict
 from collections_core.interfaces import StorageProvider
 from collections_core.models import Query
 from collections_core.service import CollectionsService
@@ -254,7 +254,11 @@ def migrate(*, db: Path, root: Path = DEFAULT_ROOT) -> None:
     target = SqliteStorageProvider(db)
     collections = imported = 0
     for info in source.list_collections():
-        target.create_collection(info.name, source.get_schema(info.name))
+        schema = source.get_schema(info.name)
+        try:
+            target.create_collection(info.name, schema)
+        except CollectionExists:
+            target.update_schema(info.name, schema)  # keep the run idempotent
         collections += 1
         offset = 0
         while True:

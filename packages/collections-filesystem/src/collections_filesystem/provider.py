@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any
 
 from collections_core.capabilities import Capabilities
 from collections_core.errors import (
+    CollectionExists,
     CollectionNotFound,
     Conflict,
     InvalidIdentifier,
@@ -90,6 +92,29 @@ class FilesystemStorageProvider:
     def get_schema(self, collection: str) -> dict[str, Any]:
         directory = self._collection_dir(collection)
         return json.loads((directory / "schema.json").read_text(encoding="utf-8"))
+
+    # -- collection management -------------------------------------------
+    def create_collection(self, collection: str, schema: dict[str, Any]) -> None:
+        """Create a new collection by writing its ``schema.json``.
+
+        The schema is stored as a pretty-printed, git-diff-friendly JSON file --
+        the same on-disk, versionable representation collections have always had,
+        just written by a tool rather than by hand.
+        """
+        directory = self.root / _safe_segment("collection", collection)
+        schema_path = directory / "schema.json"
+        if schema_path.is_file():
+            raise CollectionExists(collection)
+        directory.mkdir(parents=True, exist_ok=True)
+        self._write(schema_path, schema)
+
+    def update_schema(self, collection: str, schema: dict[str, Any]) -> None:
+        directory = self._collection_dir(collection)  # raises CollectionNotFound
+        self._write(directory / "schema.json", schema)
+
+    def delete_collection(self, collection: str) -> None:
+        directory = self._collection_dir(collection)  # raises CollectionNotFound
+        shutil.rmtree(directory)
 
     def list_items(self, collection: str, query: Query) -> Page[Item]:
         return run_query(self._load_all(collection), query)

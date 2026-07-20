@@ -74,7 +74,63 @@ def test_read_only_service_exposes_no_write_tools(book_schema):
     names = [t.name for t in build_tools(_mem(book_schema, read_only=True))]
     assert not any(n.startswith(("create_", "update_")) for n in names)
     assert "delete_item" not in names
+    assert "delete_collection" not in names
     assert {"list_collections", "list_items", "get_item"} <= set(names)
+
+
+def test_collection_management_tools_gated_by_capabilities(book_schema):
+    write = [t.name for t in build_tools(_mem(book_schema))]
+    assert {"create_collection", "update_schema", "delete_collection"} <= set(write)
+
+    no_delete = [t.name for t in build_tools(_mem(book_schema, deletable=False))]
+    assert {"create_collection", "update_schema"} <= set(no_delete)
+    assert "delete_collection" not in no_delete  # needs the delete capability
+
+
+# -- collection management dispatch ------------------------------------------
+def test_create_collection_materialises_typed_tools(examples_copy):
+    svc = _fs(examples_copy)
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+
+    result = dispatch(svc, "create_collection", {"name": "games", "schema": schema})
+    assert result == {"created": "games"}
+
+    # The new collection's typed create/update tools now appear automatically.
+    names = [t.name for t in build_tools(svc)]
+    assert {"create_games", "update_games"} <= set(names)
+    # ...and can be used to write an item into it.
+    created = dispatch(svc, "create_games", {"id": "chess", "name": "Chess"})
+    assert created["id"] == "chess"
+
+
+def test_update_schema_dispatch_warns_about_invalid_items(examples_copy):
+    svc = _fs(examples_copy)
+    schema = dispatch(svc, "get_schema", {"collection": "books"})
+    schema["required"] = ["title", "isbn"]  # no existing book has an isbn
+
+    result = dispatch(svc, "update_schema", {"collection": "books", "schema": schema})
+    assert result["updated"] == "books"
+    assert set(result["invalid_items"]) == {"dune", "lotr"}
+    assert "warning" in result
+
+
+def test_delete_collection_dispatch(examples_copy):
+    svc = _fs(examples_copy)
+    assert dispatch(svc, "delete_collection", {"collection": "movies"}) == {
+        "deleted_collection": "movies"
+    }
+    assert {c["name"] for c in dispatch(svc, "list_collections", {})} == {"books"}
+
+
+def test_create_collection_rejects_reserved_name(examples_copy):
+    from collections_core.errors import InvalidIdentifier
+
+    with pytest.raises(InvalidIdentifier):
+        dispatch(
+            _fs(examples_copy),
+            "create_collection",
+            {"name": "schema", "schema": {"type": "object"}},
+        )
 
 
 # -- dispatch (against the real filesystem provider) -------------------------

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from collections_core.errors import (
+    CollectionExists,
     CollectionNotFound,
     Conflict,
     InvalidIdentifier,
@@ -94,6 +97,56 @@ def test_traversal_collection_is_rejected(examples_copy):
     provider = FilesystemStorageProvider(examples_copy)
     with pytest.raises(InvalidIdentifier):
         provider.get_schema("../../secret")
+
+
+def test_create_collection_writes_schema_file(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+    schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+
+    provider.create_collection("games", schema)
+
+    assert "games" in provider.list_collections()
+    assert provider.get_schema("games") == schema
+    written = json.loads((examples_copy / "games" / "schema.json").read_text())
+    assert written == schema
+
+
+def test_create_collection_rejects_existing(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+    with pytest.raises(CollectionExists):
+        provider.create_collection("books", {"type": "object"})
+
+
+def test_create_collection_rejects_traversal_name(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+    with pytest.raises(InvalidIdentifier):
+        provider.create_collection("../evil", {"type": "object"})
+
+
+def test_update_schema_overwrites(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+    new_schema = {"type": "object", "properties": {"title": {"type": "string"}}}
+
+    provider.update_schema("books", new_schema)
+
+    assert provider.get_schema("books") == new_schema
+
+
+def test_update_schema_missing_collection_raises(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+    with pytest.raises(CollectionNotFound):
+        provider.update_schema("nope", {"type": "object"})
+
+
+def test_delete_collection_removes_directory(examples_copy):
+    provider = FilesystemStorageProvider(examples_copy)
+
+    provider.delete_collection("books")
+
+    assert provider.list_collections() == ["movies"]
+    assert not (examples_copy / "books").exists()
+    with pytest.raises(CollectionNotFound):
+        provider.delete_collection("books")
 
 
 def test_sort_tolerates_heterogeneous_values(examples_copy):

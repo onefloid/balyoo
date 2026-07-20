@@ -17,6 +17,14 @@ class CollectionNotFound(CollectionsError):
         super().__init__(f"Collection not found: {collection!r}")
 
 
+class CollectionExists(CollectionsError):
+    """Raised when creating a collection whose name is already taken."""
+
+    def __init__(self, collection: str) -> None:
+        self.collection = collection
+        super().__init__(f"Collection already exists: {collection!r}")
+
+
 class ItemNotFound(CollectionsError):
     def __init__(self, collection: str, item_id: str) -> None:
         self.collection = collection

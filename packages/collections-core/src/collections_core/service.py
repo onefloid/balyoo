@@ -13,9 +13,14 @@ from __future__ import annotations
 from typing import Any
 
 from collections_core.capabilities import Capabilities
-from collections_core.errors import NotSupported
+from collections_core.errors import InvalidIdentifier, NotSupported, SchemaValidationError
 from collections_core.interfaces import SchemaValidator, StorageProvider
 from collections_core.models import CollectionInfo, Item, Page, Query
+
+# Collection names that would collide with the MCP server's generic collection-
+# management tools (``create_collection``, ``update_schema``) once turned into the
+# per-collection ``create_<name>`` / ``update_<name>`` tool names.
+_RESERVED_COLLECTION_NAMES = frozenset({"collection", "schema"})
 
 
 class CollectionsService:
@@ -69,6 +74,35 @@ class CollectionsService:
     def get_schema(self, collection: str) -> dict[str, Any]:
         return self._provider.get_schema(collection)
 
+    def create_collection(self, collection: str, schema: dict[str, Any]) -> None:
+        """Create a new collection from a (meta-validated) JSON Schema.
+
+        The schema is checked for being a well-formed JSON Schema before it is
+        persisted, so a malformed definition is rejected up front rather than
+        surfacing later as confusing item-validation errors.
+        """
+        self._require("write")
+        if collection in _RESERVED_COLLECTION_NAMES:
+            raise InvalidIdentifier("collection name (reserved)", collection)
+        self._check_schema(schema)
+        self._provider.create_collection(collection, schema)
+
+    def update_schema(self, collection: str, schema: dict[str, Any]) -> list[str]:
+        """Replace a collection's schema; return ids of now-invalid items.
+
+        Changing a schema can retroactively invalidate stored items. The update is
+        not blocked (the caller may be tightening the schema deliberately), but the
+        ids of items that no longer conform are returned so the caller can warn.
+        """
+        self._require("write")
+        self._check_schema(schema)
+        self._provider.update_schema(collection, schema)
+        return self._invalid_items(collection, schema)
+
+    def delete_collection(self, collection: str) -> None:
+        self._require("delete")
+        self._provider.delete_collection(collection)
+
     # -- items -----------------------------------------------------------
     def list_items(self, collection: str, query: Query) -> Page[Item]:
         self._require("read")
@@ -110,6 +144,29 @@ class CollectionsService:
             return
         schema = self._provider.get_schema(collection)
         self._validator.validate(schema, data)
+
+    def _check_schema(self, schema: dict[str, Any]) -> None:
+        if self._validator is None:
+            return
+        self._validator.check_schema(schema)
+
+    def _invalid_items(self, collection: str, schema: dict[str, Any]) -> list[str]:
+        """Ids of stored items that do not conform to ``schema`` (empty if none)."""
+        if self._validator is None:
+            return []
+        invalid: list[str] = []
+        offset = 0
+        while True:
+            page = self._provider.list_items(collection, Query(limit=1000, offset=offset))
+            for item in page.items:
+                try:
+                    self._validator.validate(schema, item.data)
+                except SchemaValidationError:
+                    invalid.append(item.id)
+            offset += len(page.items)
+            if not page.items or offset >= page.total:
+                break
+        return invalid
 
     def _require(self, operation: str) -> None:
         caps = self.capabilities

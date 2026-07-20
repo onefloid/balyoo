@@ -12,10 +12,18 @@ capabilities are reused. The tool set is generated from the platform:
 - **Schema-typed writes, per collection:** `create_<collection>` and
   `update_<collection>`, whose input schema is the collection's own JSON Schema — so
   the assistant gets typed, validated fields instead of an opaque blob.
+- **Collection management:** `create_collection` (define a new collection from a JSON
+  Schema — its description doubles as authoring guidance, and the schema is
+  meta-validated before it is stored), `update_schema` (replace a collection's schema;
+  returns the ids of any existing items that no longer conform), and
+  `delete_collection`. A newly created collection's typed `create_<name>` /
+  `update_<name>` tools then appear automatically.
 - **`delete_item`.**
 
-Write tools appear only when the service's capabilities allow them; a read-only
-server (`--read-only`) is read-only to the assistant too.
+Write tools (including `create_collection` / `update_schema`) appear only when the
+service's capabilities allow them; a read-only server (`--read-only`) is read-only to
+the assistant too. `delete_collection` requires the delete capability, like
+`delete_item`.
 
 ## Run
 

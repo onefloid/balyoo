@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from collections_core.capabilities import Capabilities
-from collections_core.errors import CollectionNotFound, Conflict, ItemNotFound
+from collections_core.errors import (
+    CollectionExists,
+    CollectionNotFound,
+    Conflict,
+    ItemNotFound,
+)
 from collections_core.models import Item, Page, Query
 from collections_core.query import run_query
 
@@ -62,16 +67,43 @@ class SqliteStorageProvider:
             supports_transactions=True,
         )
 
-    # -- collection management (beyond the read/write protocol) ----------
-    def create_collection(self, name: str, schema: dict[str, Any]) -> None:
-        """Register a collection and its JSON Schema (idempotent upsert)."""
+    # -- collection management -------------------------------------------
+    def create_collection(self, collection: str, schema: dict[str, Any]) -> None:
+        """Register a new collection and its JSON Schema.
+
+        Rejects a name that is already taken (:class:`CollectionExists`) so create
+        semantics match the filesystem backend; use :meth:`update_schema` to change
+        an existing collection's schema.
+        """
         with closing(self._connect()) as conn:
-            conn.execute(
-                "INSERT INTO collections(name, schema) VALUES(?, ?) "
-                "ON CONFLICT(name) DO UPDATE SET schema = excluded.schema",
-                (name, json.dumps(schema)),
+            try:
+                conn.execute(
+                    "INSERT INTO collections(name, schema) VALUES(?, ?)",
+                    (collection, json.dumps(schema)),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise CollectionExists(collection) from exc
+            conn.commit()
+
+    def update_schema(self, collection: str, schema: dict[str, Any]) -> None:
+        with closing(self._connect()) as conn:
+            cursor = conn.execute(
+                "UPDATE collections SET schema = ? WHERE name = ?",
+                (json.dumps(schema), collection),
             )
             conn.commit()
+        if cursor.rowcount == 0:
+            raise CollectionNotFound(collection)
+
+    def delete_collection(self, collection: str) -> None:
+        # Items are removed by the ``ON DELETE CASCADE`` on items.collection.
+        with closing(self._connect()) as conn:
+            cursor = conn.execute(
+                "DELETE FROM collections WHERE name = ?", (collection,)
+            )
+            conn.commit()
+        if cursor.rowcount == 0:
+            raise CollectionNotFound(collection)
 
     # -- reads -----------------------------------------------------------
     def list_collections(self) -> list[str]:

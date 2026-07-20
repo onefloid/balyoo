@@ -94,6 +94,10 @@ Protocol (stdio; launched by `collections mcp`). It is another adapter over
   collection's JSON Schema** (presentation keywords `$schema`/`x-card`/`x-collection`
   stripped; update relaxes `required` to just `id`). This is what MCP adds over
   REST: the assistant gets typed, validated write tools instead of an opaque blob.
+- Collection management: `create_collection` / `update_schema` (schemas are
+  meta-validated before being stored) and `delete_collection`. Creating a collection
+  writes its schema through the same `StorageProvider`, so the new collection's typed
+  `create_<c>` / `update_<c>` tools materialise automatically.
 - `delete_item`.
 
 The tool logic is transport-agnostic (`build_tools` / `dispatch` in

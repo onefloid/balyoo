@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from collections_core.errors import (
+    CollectionExists,
     CollectionNotFound,
     Conflict,
     ItemNotFound,
@@ -111,6 +112,38 @@ def test_works_as_a_drop_in_service_backend(tmp_path):
     ro = CollectionsService(provider, JsonSchemaValidator(), read_only=True)
     with pytest.raises(NotSupported):
         ro.delete_item("books", item.id)
+
+
+def test_create_collection_rejects_existing(tmp_path):
+    provider = _provider(tmp_path)
+    with pytest.raises(CollectionExists):
+        provider.create_collection("books", {"type": "object"})
+
+
+def test_update_schema_replaces_and_checks_existence(tmp_path):
+    provider = _provider(tmp_path)
+    new_schema = {"type": "object", "properties": {"title": {"type": "string"}}}
+
+    provider.update_schema("books", new_schema)
+    assert provider.get_schema("books") == new_schema
+
+    with pytest.raises(CollectionNotFound):
+        provider.update_schema("nope", {"type": "object"})
+
+
+def test_delete_collection_cascades_items(tmp_path):
+    provider = _provider(tmp_path)
+
+    provider.delete_collection("books")
+
+    assert provider.list_collections() == []
+    with pytest.raises(CollectionNotFound):
+        provider.get_schema("books")
+    with pytest.raises(CollectionNotFound):
+        provider.delete_collection("books")
+    # A fresh collection of the same name starts empty (items really were removed).
+    provider.create_collection("books", BOOK_SCHEMA)
+    assert provider.list_items("books", Query(limit=100)).total == 0
 
 
 def test_persists_across_reopen(tmp_path):
