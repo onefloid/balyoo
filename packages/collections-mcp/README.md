@@ -25,6 +25,22 @@ service's capabilities allow them; a read-only server (`--read-only`) is read-on
 the assistant too. `delete_collection` requires the delete capability, like
 `delete_item`.
 
+### Refreshing the tool list
+
+The tool set is dynamic — creating or deleting a collection changes which
+`create_<name>` / `update_<name>` tools exist. The server advertises
+`tools.listChanged` and emits a `notifications/tools/list_changed` after those
+operations, so a client on a **persistent** connection (e.g. Claude Desktop over
+stdio) updates its tool list live.
+
+The remote HTTP transport is stateless (no server→client push channel), so a
+connector like ChatGPT or a Claude custom connector fetches the tool list once at
+connect time and caches it. After the server is redeployed with new tools, or after
+you create a collection, **reconnect the connector** (toggle it off/on, or remove and
+re-add it) to pick up the new tools — the displayed connector "version" does not drive
+this. The server reports its own version (`serverInfo.version`) from
+`collections-mcp`'s package version; bump that in `pyproject.toml` to change it.
+
 ## Run
 
 ```bash

@@ -20,15 +20,30 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as pkg_version
 from typing import Any
 
 import mcp.types as types
 from collections_core.errors import CollectionsError, SchemaValidationError
 from collections_core.models import Query
 from collections_core.service import CollectionsService
-from mcp.server.lowlevel import Server
+from mcp.server.lowlevel import NotificationOptions, Server
 
 logger = logging.getLogger("collections_mcp")
+
+
+def _server_version() -> str:
+    """The version advertised to clients (``serverInfo.version``).
+
+    Read from this package's metadata so bumping ``collections-mcp``'s version in
+    ``pyproject.toml`` is what changes it -- clients display this, and a change is a
+    hint that the server (and its tool set) may have moved on.
+    """
+    try:
+        return pkg_version("collections-mcp")
+    except PackageNotFoundError:  # pragma: no cover - only if run from a non-installed tree
+        return "0"
 
 # Presentation-only keywords that must not leak into a write tool's input schema.
 _SCHEMA_META = ("$schema", "x-card", "x-collection")
@@ -41,6 +56,13 @@ _UPDATE = "update_"
 _CREATE_COLLECTION = "create_collection"
 _UPDATE_SCHEMA = "update_schema"
 _DELETE_COLLECTION = "delete_collection"
+
+# Tools that change *which* tools exist (a new collection materialises its own
+# create_/update_ tools; a deleted one removes them). Running any of these emits a
+# tools/list_changed notification so a connected client refetches the list.
+_COLLECTION_MANAGEMENT_TOOLS = frozenset(
+    {_CREATE_COLLECTION, _UPDATE_SCHEMA, _DELETE_COLLECTION}
+)
 
 # Doubles as the assistant's guidance for authoring a schema.
 _CREATE_COLLECTION_DESCRIPTION = """\
@@ -290,13 +312,47 @@ def dispatch(service: CollectionsService, name: str, arguments: dict[str, Any]) 
 ServiceResolver = Callable[[], CollectionsService]
 
 
+class _CollectionsServer(Server):
+    """A ``Server`` that advertises a *mutable* tool list.
+
+    ``create_collection`` / ``delete_collection`` change which tools exist, so the
+    server announces ``tools.listChanged`` and emits ``notifications/tools/list_changed``
+    when they run. The Streamable HTTP session manager calls
+    ``create_initialization_options()`` with no arguments, so the ``tools_changed``
+    default is set here rather than at each call site.
+    """
+
+    def create_initialization_options(
+        self,
+        notification_options: NotificationOptions | None = None,
+        experimental_capabilities: dict[str, dict[str, Any]] | None = None,
+    ):
+        return super().create_initialization_options(
+            notification_options or NotificationOptions(tools_changed=True),
+            experimental_capabilities,
+        )
+
+
 def build_server(
     service: CollectionsService | ServiceResolver,
 ) -> Server:
     resolve: ServiceResolver = (
         service if callable(service) else (lambda svc=service: svc)
     )
-    server: Server = Server("collections")
+    server: Server = _CollectionsServer("collections", version=_server_version())
+
+    async def _notify_tools_changed() -> None:
+        # Best-effort: tell a client with a live session (e.g. stdio) to refetch the
+        # tool list. On the stateless HTTP transport there is no persistent stream to
+        # push to, so this is a no-op there and must never fail the tool call.
+        try:
+            session = server.request_context.session
+        except LookupError:
+            return
+        try:
+            await session.send_tool_list_changed()
+        except Exception:  # pragma: no cover - transport may not support server pushes
+            logger.debug("tools/list_changed notification not delivered", exc_info=True)
 
     @server.list_tools()
     async def _list_tools() -> list[types.Tool]:
@@ -317,6 +373,8 @@ def build_server(
                 content=[types.TextContent(type="text", text=message)],
                 isError=True,
             )
+        if name in _COLLECTION_MANAGEMENT_TOOLS:
+            await _notify_tools_changed()
         text = json.dumps(payload, ensure_ascii=False, indent=2)
         return [types.TextContent(type="text", text=text)]
 
