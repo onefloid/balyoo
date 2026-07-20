@@ -342,7 +342,14 @@ def test_mcp_rejects_a_tampered_access_token(examples_copy):
         token_res = client.post("/token", data=_token_form(code, verifier))
         access_token = token_res.json()["access_token"]
 
-        tampered = access_token[:-1] + ("A" if access_token[-1] != "A" else "B")
+        # Tamper the signature by flipping its *first* base64 char. Flipping the
+        # last char (of the whole token) was flaky: a 32-byte HMAC encodes to a
+        # final base64 char whose low 2 bits are padding, so ~7% of tokens decode
+        # to the same signature bytes after the change and still verify. The first
+        # signature char has no such slack, so the tamper always invalidates it.
+        body_b64, sig_b64 = access_token.rsplit(".", 1)
+        tampered_sig = ("A" if sig_b64[0] != "A" else "B") + sig_b64[1:]
+        tampered = f"{body_b64}.{tampered_sig}"
         res = client.post("/mcp", **_initialize({"Authorization": f"Bearer {tampered}"}))
         assert res.status_code == 401
 
