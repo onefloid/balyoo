@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version
+
+import anyio
+import mcp.types as types
 import pytest
 from collections_core.errors import (
     CollectionNotFound,
@@ -10,9 +14,10 @@ from collections_core.errors import (
 )
 from collections_core.service import CollectionsService
 from collections_filesystem.provider import FilesystemStorageProvider
-from collections_mcp.server import build_tools, dispatch
+from collections_mcp.server import build_server, build_tools, dispatch
 from collections_schema.validator import JsonSchemaValidator
 from conftest import InMemoryProvider
+from mcp.shared.memory import create_connected_server_and_client_session
 
 
 def _mem(book_schema, **kwargs) -> CollectionsService:
@@ -177,3 +182,44 @@ def test_dispatch_write_blocked_when_read_only(examples_copy):
 def test_unknown_tool_raises(examples_copy):
     with pytest.raises(ValueError, match="Unknown tool"):
         dispatch(_fs(examples_copy), "frobnicate", {})
+
+
+# -- dynamic tool list: version + list_changed -------------------------------
+def test_server_advertises_version_and_mutable_tool_list(examples_copy):
+    opts = build_server(_fs(examples_copy)).create_initialization_options()
+    # A real, bumpable server version (from the package), not the SDK's own.
+    assert opts.server_version == version("collections-mcp")
+    # The tool list is dynamic (create_/delete_collection change it).
+    assert opts.capabilities.tools.listChanged is True
+
+
+def test_create_collection_emits_tool_list_changed(examples_copy):
+    """Over a live session, a collection-management tool pushes tools/list_changed
+    (so a client refetches), while a read tool does not."""
+    changed = 0
+
+    async def handler(message):
+        nonlocal changed
+        if isinstance(message, types.ServerNotification) and isinstance(
+            message.root, types.ToolListChangedNotification
+        ):
+            changed += 1
+
+    async def scenario():
+        server = build_server(_fs(examples_copy))
+        async with create_connected_server_and_client_session(
+            server, message_handler=handler
+        ) as client:
+            await client.call_tool("get_schema", {"collection": "books"})
+            await anyio.sleep(0.05)
+            assert changed == 0  # a read must not signal a tool-list change
+
+            await client.call_tool(
+                "create_collection", {"name": "games", "schema": {"type": "object"}}
+            )
+            with anyio.fail_after(2):
+                while changed == 0:
+                    await anyio.sleep(0.01)
+
+    anyio.run(scenario)
+    assert changed == 1
