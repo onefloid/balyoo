@@ -57,6 +57,23 @@ def test_ui_config_is_written(examples_copy, tmp_path):
     assert config == {"apiBase": "api/", "static": True}
 
 
+def test_live_url_writes_dual_mode_config(examples_copy, tmp_path):
+    out = tmp_path / "dist"
+    service = CollectionsService(
+        FilesystemStorageProvider(examples_copy), JsonSchemaValidator(), read_only=True
+    )
+    export_site(service, out, live_url="https://balyoo.fly.dev/")
+
+    # Dual mode: default to the live server, keep the exported mirror as fallback.
+    assert _load(out / "config.json") == {
+        "apiBase": "https://balyoo.fly.dev/",
+        "static": False,
+        "staticBase": "api/",
+    }
+    # The mirror is still exported so the fallback has data to serve.
+    assert (out / "api" / "collections.json").is_file()
+
+
 def test_export_leaves_existing_ui_files_untouched(examples_copy, tmp_path):
     # The Pages workflow lays the built collections-ui bundle into the output dir
     # first; the export must only add api/** and config.json, never clobber it.

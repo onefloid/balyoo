@@ -45,11 +45,16 @@ jobs:
       - name: Build UI
         run: pnpm --dir packages/collections-ui build
       - name: Assemble site (UI bundle + JSON mirror + config.json)
+        # --live-url points the UI at the fly.io REST API by default while keeping
+        # the exported api/ mirror as an automatic fallback (dual mode). The
+        # trailing slash is load-bearing: the client resolves routes via
+        # new URL("collections", apiBase).
         run: |
           rm -rf dist
           mkdir dist
           cp -r packages/collections-ui/dist/. dist/
-          uv run collections export --root examples/collections --out dist
+          uv run collections export --root examples/collections --out dist \
+            --live-url https://balyoo.fly.dev/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:

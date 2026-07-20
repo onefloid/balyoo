@@ -104,6 +104,26 @@ which builds the UI, assembles it with the JSON mirror, and deploys to GitHub Pa
 > at `https://onefloid.github.io/balyoo/` (also triggerable via the workflow's
 > *Run workflow* button).
 
+### Live data on the static site (dual mode)
+
+The Pages workflow exports with `--live-url https://balyoo.fly.dev/`, so the
+deployed `config.json` is `{"apiBase": "https://balyoo.fly.dev/", "static": false,
+"staticBase": "api/"}`. The UI then **defaults to the live fly.io REST API** (so
+items added/edited over MCP show up without a rebuild) but keeps the exported
+`api/` mirror as a fallback:
+
+- A header toggle switches the source between **Live** and **Static** (remembered
+  in `localStorage`).
+- If the live server can't be reached (offline, or a scaled-to-zero Fly machine
+  still waking), reads **fall back to the static mirror automatically** and a
+  notice with *Retry live* appears — the site never goes blank.
+- Writes stay unavailable: the fly.io REST API is read-only and public, so the UI
+  shows no write controls (its usual capability gating).
+
+Reads work cross-origin because the REST server sends `Access-Control-Allow-Origin: *`
+for GET (see `collections-rest`), and every UI read is a simple GET (no preflight).
+Omit `--live-url` to export the plain read-only static site instead.
+
 ## AI ingestion (talk to Claude, publish an item)
 
 Describe an experience in natural language — even from the Claude mobile app at the

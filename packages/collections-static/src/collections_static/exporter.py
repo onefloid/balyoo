@@ -17,6 +17,11 @@ The UI itself is the built ``collections-ui`` bundle, laid down separately (by t
 Pages workflow); this exporter only produces the JSON mirror plus a ``config.json``
 that points the UI at ``api/`` in read-only static mode. Existing files in the
 output directory (e.g. a UI build already placed there) are left untouched.
+
+Passing ``live_url`` instead writes a *dual-mode* ``config.json`` that defaults the
+UI to that live REST server but keeps the exported ``api/`` mirror as an automatic
+fallback (and a user-selectable source). This is how the GitHub Pages site is
+pointed at the fly.io REST API while still working if that server is unreachable.
 """
 
 from __future__ import annotations
@@ -35,9 +40,19 @@ _PAGE_SIZE = 1000  # Query.limit is capped at 1000; paginate for larger collecti
 # and a live read-write server (which ships its own config.json).
 _STATIC_CONFIG = {"apiBase": "api/", "static": True}
 
+# Base of the exported JSON mirror, used as the fallback source in dual mode.
+_MIRROR_BASE = "api/"
 
-def export_site(service: CollectionsService, out_dir: str | Path) -> None:
-    """Write the static API mirror and the UI runtime config into ``out_dir``."""
+
+def export_site(
+    service: CollectionsService, out_dir: str | Path, *, live_url: str | None = None
+) -> None:
+    """Write the static API mirror and the UI runtime config into ``out_dir``.
+
+    With ``live_url`` the config points the UI at that live REST server by default,
+    keeping the exported ``api/`` mirror as an automatic/selectable fallback (dual
+    mode). Without it, the config is the plain read-only static mirror.
+    """
     out = Path(out_dir)
     api = out / "api"
 
@@ -59,7 +74,12 @@ def export_site(service: CollectionsService, out_dir: str | Path) -> None:
         for item in items:
             _write_json(base / name / "items" / f"{item.id}.json", item.model_dump())
 
-    _write_json(out / "config.json", _STATIC_CONFIG)
+    config = (
+        {"apiBase": live_url, "static": False, "staticBase": _MIRROR_BASE}
+        if live_url is not None
+        else _STATIC_CONFIG
+    )
+    _write_json(out / "config.json", config)
 
 
 def _all_items(service: CollectionsService, collection: str) -> list[Item]:
