@@ -134,6 +134,33 @@ code {
   color: var(--muted);
   font-size: 0.85rem;
 }
+.source-controls {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.badge-warn {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.9rem auto 0;
+  max-width: 1120px;
+  padding: 0.7rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--fg);
+  font-size: 0.9rem;
+}
+.notice .btn {
+  margin-left: auto;
+}
 .site-footer {
   padding: 1.25rem;
   border-top: 1px solid var(--border);

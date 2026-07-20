@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, makeClient } from "./api";
+import {
+  ApiError,
+  FallbackClient,
+  RestClient,
+  StaticJsonClient,
+  makeClient,
+} from "./api";
+import type { ApiClient } from "./api";
+import type { CollectionInfo } from "./types";
 
 function mockFetch(response: {
   ok?: boolean;
@@ -94,5 +102,124 @@ describe("error mapping", () => {
       message: "Schema validation failed",
       details: ["title: required"],
     });
+  });
+});
+
+describe("FallbackClient", () => {
+  const collections: CollectionInfo[] = [
+    {
+      name: "books",
+      capabilities: {
+        supports_read: true,
+        supports_write: false,
+        supports_delete: false,
+        supports_search: true,
+        supports_transactions: true,
+      },
+      item_count: 2,
+    },
+  ];
+
+  /** A minimal stub client whose reads resolve or reject as configured. */
+  function stub(overrides: Partial<ApiClient>): ApiClient {
+    const reject = () => Promise.reject(new Error("not stubbed"));
+    return {
+      canWrite: false,
+      listCollections: reject,
+      getCollection: reject,
+      getSchema: reject,
+      listItems: reject,
+      getItem: reject,
+      createItem: reject,
+      updateItem: reject,
+      deleteItem: reject,
+      ...overrides,
+    } as ApiClient;
+  }
+
+  it("passes primary results through and never calls onFallback on success", async () => {
+    const onFallback = vi.fn();
+    const primary = stub({ listCollections: () => Promise.resolve(collections) });
+    const fallback = stub({});
+    const client = new FallbackClient(primary, fallback, onFallback);
+
+    expect(await client.listCollections()).toEqual(collections);
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the static client when the live client throws (network/CORS)", async () => {
+    const onFallback = vi.fn();
+    const primary = stub({
+      listCollections: () => Promise.reject(new TypeError("Failed to fetch")),
+    });
+    const fallback = stub({ listCollections: () => Promise.resolve(collections) });
+    const client = new FallbackClient(primary, fallback, onFallback);
+
+    expect(await client.listCollections()).toEqual(collections);
+    expect(onFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back on a 5xx (cold-start/gateway) error", async () => {
+    const onFallback = vi.fn();
+    const primary = stub({
+      listCollections: () => Promise.reject(new ApiError(503, "Service Unavailable")),
+    });
+    const fallback = stub({ listCollections: () => Promise.resolve(collections) });
+    const client = new FallbackClient(primary, fallback, onFallback);
+
+    expect(await client.listCollections()).toEqual(collections);
+    expect(onFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fall back on a 404 (a real answer from a reachable server)", async () => {
+    const onFallback = vi.fn();
+    const primary = stub({
+      getItem: () => Promise.reject(new ApiError(404, "Not found")),
+    });
+    const fallback = stub({
+      getItem: () => Promise.resolve({ id: "x", data: {} }),
+    });
+    const client = new FallbackClient(primary, fallback, onFallback);
+
+    await expect(client.getItem("books", "missing")).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(onFallback).not.toHaveBeenCalled();
+  });
+
+  it("notifies onFallback only once across repeated failures", async () => {
+    const onFallback = vi.fn();
+    const primary = stub({
+      listCollections: () => Promise.reject(new TypeError("down")),
+      getSchema: () => Promise.reject(new TypeError("down")),
+    });
+    const fallback = stub({
+      listCollections: () => Promise.resolve(collections),
+      getSchema: () => Promise.resolve({}),
+    });
+    const client = new FallbackClient(primary, fallback, onFallback);
+
+    await client.listCollections();
+    await client.getSchema("books");
+    expect(onFallback).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends writes to the live client, not the static mirror", async () => {
+    const created = { id: "x", data: { title: "T" } };
+    const createItem = vi.fn(() => Promise.resolve(created));
+    const primary = stub({ canWrite: true, createItem });
+    const fallback = stub({});
+    const client = new FallbackClient(primary, fallback, () => {});
+
+    expect(client.canWrite).toBe(true);
+    expect(await client.createItem("books", { title: "T" })).toEqual(created);
+    expect(createItem).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("exported client classes", () => {
+  it("RestClient can write, StaticJsonClient cannot", () => {
+    expect(new RestClient("").canWrite).toBe(true);
+    expect(new StaticJsonClient("api/").canWrite).toBe(false);
   });
 });

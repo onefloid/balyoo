@@ -166,6 +166,12 @@ is duplicated, and it never clobbers files already in the output directory (the
 UI bundle is placed there first). `.github/workflows/deploy-pages.yml` builds the
 UI, assembles it with the mirror, and deploys `dist/` to GitHub Pages.
 
+**Dual mode (`--live-url`).** `collections export --live-url <url>` instead writes
+`{"apiBase": "<url>", "static": false, "staticBase": "api/"}`. The mirror is still
+exported, but the UI now defaults to the live server and treats the mirror as a
+fallback (see "Live-with-fallback" below). The Pages workflow uses this to point
+the deployed site at the fly.io REST API, so live edits appear without a rebuild.
+
 ## Web UI (`collections-ui`)
 
 A single React/Vite/TypeScript app, fully generic: every view — collection list,
@@ -196,6 +202,18 @@ JSON mirror (`{"apiBase": "api/", "static": true}`, GET-only, `.json`-suffixed).
 An `ApiClient` abstraction (`StaticJsonClient` / `RestClient`) hides the
 difference; reads are identical, and the app builds with a relative base so the
 same bundle runs at a domain root or a project sub-path.
+
+**Live-with-fallback (dual mode).** When `config.json` carries both a live
+`apiBase` (`static: false`) and a `staticBase` (the exported mirror), the UI runs
+in dual mode (`packages/collections-ui/src/dataSource.tsx`): a `DataSourceProvider`
+picks the client and exposes it via the existing `ApiProvider`. It defaults to
+live but wraps it in a `FallbackClient` that, on a *connectivity* error (a thrown
+fetch = network/CORS, or a `5xx` = cold-start/gateway; **not** a `404`),
+transparently reads from the mirror and flips the app to static, showing a notice
+with *Retry live*. A header toggle (`DataSourceControls`) lets the user pick the
+source by hand (remembered in `localStorage`); the effective source is a React
+`key` on the content, so switching reloads each view. This is what lets the static
+Pages site show live fly.io data while staying up if that server is unreachable.
 
 **Capability-adaptive.** Write controls (New / Edit / Delete) render only when the
 collection's reported capabilities allow them. Because the static export advertises

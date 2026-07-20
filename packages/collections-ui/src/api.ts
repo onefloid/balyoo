@@ -61,7 +61,7 @@ const WRITES_UNSUPPORTED =
   "This is a static, read-only deployment; writes are not available.";
 
 /** Read-only client for the exported static JSON mirror (paths suffixed `.json`). */
-class StaticJsonClient implements ApiClient {
+export class StaticJsonClient implements ApiClient {
   readonly canWrite = false;
   private readonly root: URL;
 
@@ -103,7 +103,7 @@ class StaticJsonClient implements ApiClient {
 const JSON_HEADERS = { "content-type": "application/json" };
 
 /** Full CRUD client for a live `collections serve` REST API. */
-class RestClient implements ApiClient {
+export class RestClient implements ApiClient {
   readonly canWrite = true;
   private readonly root: URL;
 
@@ -158,6 +158,74 @@ class RestClient implements ApiClient {
     return requestJSON<void>(this.url(`collections/${collection}/items/${id}`), {
       method: "DELETE",
     });
+  }
+}
+
+/**
+ * True when an error means the live server could not be reached / is unhealthy,
+ * so falling back to the static mirror is warranted: any non-HTTP failure (fetch
+ * throwing on a network/CORS error) or a 5xx (a cold-start/gateway error, e.g.
+ * a scaled-to-zero Fly machine still waking up). A 4xx like 404 is a real answer
+ * from a reachable server and must NOT trigger a fallback.
+ */
+export function isConnectivityError(error: unknown): boolean {
+  return error instanceof ApiError ? error.status >= 500 : true;
+}
+
+/**
+ * Tries a live client first and, only on a connectivity error, transparently
+ * falls back to the static mirror for reads — calling `onFallback` the first
+ * time it does. Writes always go to the live client (never silently to the
+ * read-only mirror). Used by the dual-mode data source (see dataSource.tsx).
+ */
+export class FallbackClient implements ApiClient {
+  readonly canWrite: boolean;
+  private notified = false;
+
+  constructor(
+    private readonly primary: ApiClient,
+    private readonly fallback: ApiClient,
+    private readonly onFallback: () => void,
+  ) {
+    this.canWrite = primary.canWrite;
+  }
+
+  private async read<T>(op: (client: ApiClient) => Promise<T>): Promise<T> {
+    try {
+      return await op(this.primary);
+    } catch (error) {
+      if (!isConnectivityError(error)) throw error;
+      if (!this.notified) {
+        this.notified = true;
+        this.onFallback();
+      }
+      return op(this.fallback);
+    }
+  }
+
+  listCollections() {
+    return this.read((c) => c.listCollections());
+  }
+  getCollection(collection: string) {
+    return this.read((c) => c.getCollection(collection));
+  }
+  getSchema(collection: string) {
+    return this.read((c) => c.getSchema(collection));
+  }
+  listItems(collection: string, query?: ItemQuery) {
+    return this.read((c) => c.listItems(collection, query));
+  }
+  getItem(collection: string, id: string) {
+    return this.read((c) => c.getItem(collection, id));
+  }
+  createItem(collection: string, data: Record<string, unknown>) {
+    return this.primary.createItem(collection, data);
+  }
+  updateItem(collection: string, id: string, patch: Record<string, unknown>) {
+    return this.primary.updateItem(collection, id, patch);
+  }
+  deleteItem(collection: string, id: string) {
+    return this.primary.deleteItem(collection, id);
   }
 }
 

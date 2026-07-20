@@ -2,8 +2,13 @@ import { Link, Route, Routes } from "react-router-dom";
 
 import { CollectionList } from "./components/CollectionList";
 import { CollectionView } from "./components/CollectionView";
+import {
+  DataSourceBanner,
+  DataSourceControls,
+} from "./components/DataSourceControls";
 import { ItemDetail } from "./components/ItemDetail";
 import { ItemForm } from "./components/ItemForm";
+import { useDataSource } from "./dataSource";
 
 function NotFound() {
   return (
@@ -17,6 +22,10 @@ function NotFound() {
 }
 
 export function App() {
+  // Remounts the routed content when the data source changes, so each view's
+  // loaders re-run against the newly selected client.
+  const { reloadKey } = useDataSource();
+
   return (
     <>
       <header className="site-header">
@@ -25,9 +34,12 @@ export function App() {
           <span className="brand-name">Collections</span>
         </Link>
         <span className="tagline">Schema-first collections</span>
+        <DataSourceControls />
       </header>
 
-      <main className="app">
+      <DataSourceBanner />
+
+      <main className="app" key={reloadKey}>
         <Routes>
           <Route path="/" element={<CollectionList />} />
           <Route path="/c/:name" element={<CollectionView />} />

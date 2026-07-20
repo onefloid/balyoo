@@ -272,10 +272,17 @@ def migrate(*, db: Path, root: Path = DEFAULT_ROOT) -> None:
 
 
 @app.command
-def export(*, out: Path = Path("dist"), root: Path = DEFAULT_ROOT) -> None:
-    """Export a static, read-only site (JSON API mirror + minimal UI) to a directory."""
+def export(
+    *, out: Path = Path("dist"), root: Path = DEFAULT_ROOT, live_url: str | None = None
+) -> None:
+    """Export a static, read-only site (JSON API mirror + minimal UI) to a directory.
+
+    Pass --live-url <url> to point the UI at a live REST server by default while
+    keeping the exported mirror as an automatic fallback (dual mode) — used to make
+    the static GitHub Pages site show live data from the fly.io REST API.
+    """
     service = _service(root, read_only=True)
-    export_site(service, out)
+    export_site(service, out, live_url=live_url)
     print(f"exported static site to {out}")
 
 
