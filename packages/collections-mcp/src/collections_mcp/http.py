@@ -351,6 +351,7 @@ def build_asgi_app(
     token: str | None,
     oauth: OAuthConfig | None = None,
     rest_service: CollectionsService | None = None,
+    chat_app: ASGIApp | None = None,
 ) -> ASGIApp:
     """Build the Streamable HTTP MCP app, served at ``/mcp``.
 
@@ -366,6 +367,12 @@ def build_asgi_app(
     served **without** the ``/mcp`` bearer/OAuth gate — pass a read-only service if
     the REST surface should be public — with permissive CORS so browser clients on
     other origins can read it.
+
+    ``chat_app`` (when given, built by ``collections_chat.http.build_chat_asgi_app``)
+    is mounted at ``/chat`` the same way ``rest_service`` is mounted at
+    ``/collections`` — this function only dispatches to it by path prefix; the
+    chat app is responsible for its own auth (a separate owner token, unrelated
+    to the ``/mcp`` bearer/OAuth gate above) and rate limiting.
 
     ``/mcp`` is dispatched directly (not via a Starlette ``Mount``, whose route
     pattern requires a trailing path segment): a bare ``POST /mcp`` — the exact
@@ -458,6 +465,10 @@ def build_asgi_app(
                 path == "/collections" or path.startswith("/collections/")
             ):
                 await rest_app(scope, receive, send)
+                return
+            if chat_app is not None and (path == "/chat" or path.startswith("/chat/")):
+                chat_scope = {**scope, "path": path[len("/chat") :] or "/"}
+                await chat_app(chat_scope, receive, send)
                 return
         await other_routes_app(scope, receive, send)
 

@@ -45,13 +45,22 @@ _MIRROR_BASE = "api/"
 
 
 def export_site(
-    service: CollectionsService, out_dir: str | Path, *, live_url: str | None = None
+    service: CollectionsService,
+    out_dir: str | Path,
+    *,
+    live_url: str | None = None,
+    chat_url: str | None = None,
 ) -> None:
     """Write the static API mirror and the UI runtime config into ``out_dir``.
 
     With ``live_url`` the config points the UI at that live REST server by default,
     keeping the exported ``api/`` mirror as an automatic/selectable fallback (dual
     mode). Without it, the config is the plain read-only static mirror.
+
+    ``chat_url`` (only meaningful together with ``live_url``, since the chat
+    endpoint lives on the same live server) sets ``chatBase`` so the UI shows the
+    owner chat entry point; omit it (the default) to keep chat hidden, e.g. for a
+    build where ``--chat`` isn't enabled on the live deployment.
     """
     out = Path(out_dir)
     api = out / "api"
@@ -74,11 +83,16 @@ def export_site(
         for item in items:
             _write_json(base / name / "items" / f"{item.id}.json", item.model_dump())
 
-    config = (
-        {"apiBase": live_url, "static": False, "staticBase": _MIRROR_BASE}
-        if live_url is not None
-        else _STATIC_CONFIG
-    )
+    if live_url is not None:
+        config: dict[str, Any] = {
+            "apiBase": live_url,
+            "static": False,
+            "staticBase": _MIRROR_BASE,
+        }
+        if chat_url:
+            config["chatBase"] = chat_url
+    else:
+        config = dict(_STATIC_CONFIG)
     _write_json(out / "config.json", config)
 
 

@@ -34,6 +34,7 @@ def create_app(
     *,
     ui_dir: str | Path | None = None,
     cors_origins: list[str] | None = None,
+    chat_base: str | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Collections API",
@@ -110,6 +111,17 @@ def create_app(
     # are registered first and take precedence; this catch-all only serves the UI's
     # static files (index.html, assets, and its live-mode config.json).
     if ui_dir is not None:
+        # config.json is served dynamically (not from the UI bundle's static copy)
+        # so a live server can signal `chatBase` without a UI rebuild whenever
+        # --chat is toggled. Registered before the StaticFiles mount below so it
+        # takes precedence over any config.json shipped in the bundle.
+        @app.get("/config.json")
+        def config() -> dict[str, Any]:
+            body: dict[str, Any] = {"apiBase": "", "static": False}
+            if chat_base:
+                body["chatBase"] = chat_base
+            return body
+
         app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
 
     return app

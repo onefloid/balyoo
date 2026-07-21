@@ -137,6 +137,36 @@ def test_serves_ui_bundle_alongside_api(examples_copy, tmp_path):
 
     # UI served from the same origin as the API...
     assert client.get("/").text.startswith("<!doctype html>")
+
+
+def test_config_json_is_served_dynamically_not_from_the_bundle(examples_copy, tmp_path):
+    # The bundle may ship its own config.json (as the build tooling always writes
+    # one), but the live server's dynamic route must win so `chatBase` can be
+    # toggled without a UI rebuild.
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><title>UI</title>", encoding="utf-8")
+    (ui / "config.json").write_text('{"apiBase": "api/", "static": true}', encoding="utf-8")
+
+    service = CollectionsService(FilesystemStorageProvider(examples_copy), JsonSchemaValidator())
+    client = TestClient(create_app(service, ui_dir=ui, chat_base="/chat/"))
+
+    assert client.get("/config.json").json() == {
+        "apiBase": "",
+        "static": False,
+        "chatBase": "/chat/",
+    }
+
+
+def test_config_json_omits_chat_base_when_chat_disabled(examples_copy, tmp_path):
+    ui = tmp_path / "ui"
+    ui.mkdir()
+    (ui / "index.html").write_text("<!doctype html><title>UI</title>", encoding="utf-8")
+
+    service = CollectionsService(FilesystemStorageProvider(examples_copy), JsonSchemaValidator())
+    client = TestClient(create_app(service, ui_dir=ui))
+
+    assert client.get("/config.json").json() == {"apiBase": "", "static": False}
     assert client.get("/config.json").json() == {"apiBase": "", "static": False}
     # ...without shadowing the API routes.
     assert client.get("/collections/books/items/dune").status_code == 200

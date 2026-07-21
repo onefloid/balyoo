@@ -14,6 +14,7 @@ dependencies = [
     "collections-mcp",
     "collections-sqlite",
     "collections-cli",
+    "collections-chat",
 ]
 
 [tool.uv]
@@ -38,6 +39,7 @@ collections-static = { workspace = true }
 collections-mcp = { workspace = true }
 collections-sqlite = { workspace = true }
 collections-cli = { workspace = true }
+collections-chat = { workspace = true }
 
 [dependency-groups]
 dev = [
