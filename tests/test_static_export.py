@@ -74,6 +74,36 @@ def test_live_url_writes_dual_mode_config(examples_copy, tmp_path):
     assert (out / "api" / "collections.json").is_file()
 
 
+def test_live_url_with_chat_url_adds_chat_base(examples_copy, tmp_path):
+    out = tmp_path / "dist"
+    service = CollectionsService(
+        FilesystemStorageProvider(examples_copy), JsonSchemaValidator(), read_only=True
+    )
+    export_site(
+        service, out, live_url="https://balyoo.fly.dev/", chat_url="https://balyoo.fly.dev/chat"
+    )
+
+    assert _load(out / "config.json") == {
+        "apiBase": "https://balyoo.fly.dev/",
+        "static": False,
+        "staticBase": "api/",
+        "chatBase": "https://balyoo.fly.dev/chat",
+    }
+
+
+def test_chat_url_without_live_url_is_ignored(examples_copy, tmp_path):
+    # chat_url only makes sense alongside a live server; without live_url the
+    # config falls back to the plain read-only static mode, same as if chat_url
+    # had never been passed (guard against silently mixing modes).
+    out = tmp_path / "dist"
+    service = CollectionsService(
+        FilesystemStorageProvider(examples_copy), JsonSchemaValidator(), read_only=True
+    )
+    export_site(service, out, chat_url="https://balyoo.fly.dev/chat")
+
+    assert _load(out / "config.json") == {"apiBase": "api/", "static": True}
+
+
 def test_export_leaves_existing_ui_files_untouched(examples_copy, tmp_path):
     # The Pages workflow lays the built collections-ui bundle into the output dir
     # first; the export must only add api/** and config.json, never clobber it.

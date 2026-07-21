@@ -12,6 +12,7 @@ dependencies = [
     "collections-static",
     "collections-mcp",
     "collections-sqlite",
+    "collections-chat",
     "cyclopts>=2.9",
     "uvicorn>=0.29",
 ]
@@ -34,3 +35,4 @@ collections-rest = { workspace = true }
 collections-static = { workspace = true }
 collections-mcp = { workspace = true }
 collections-sqlite = { workspace = true }
+collections-chat = { workspace = true }

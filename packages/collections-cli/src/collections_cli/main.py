@@ -160,6 +160,7 @@ def mcp(
     no_delete: bool = False,
     allow_anonymous: bool = False,
     rest: bool = False,
+    chat: bool = False,
     db: Path | None = None,
     root: Path = DEFAULT_ROOT,
 ) -> None:
@@ -185,9 +186,21 @@ def mcp(
     base URL) makes this server additionally act as its own OAuth 2.1 Authorization
     Server for that one pre-registered client; /mcp then accepts either the static
     token or a token issued through that flow. See packages/collections-mcp/README.md.
+
+    Add --chat (only with --http) to additionally serve an owner-only in-app chat
+    endpoint under /chat: a write-capable Anthropic tool-use loop over this same
+    backend, so the operator can create/edit items by chatting from the website
+    instead of setting up an external MCP client. Requires COLLECTIONS_CHAT_LLM_API_KEY
+    (the operator's own Anthropic key) and COLLECTIONS_CHAT_OWNER_TOKEN (a bearer
+    token, separate from COLLECTIONS_MCP_TOKEN, that gates /chat — chat has no
+    multi-user auth yet, only a single owner). COLLECTIONS_CHAT_MODEL optionally
+    overrides the default model without a redeploy. See packages/collections-chat/README.md.
     """
     if rest and not http:
         print("error: --rest only applies with --http", file=sys.stderr)
+        raise SystemExit(2)
+    if chat and not http:
+        print("error: --chat only applies with --http", file=sys.stderr)
         raise SystemExit(2)
 
     if not http:
@@ -234,12 +247,58 @@ def mcp(
                 public_url=oauth_public_url,
             )
 
+    chat_app = None
+    if chat:
+        chat_app = _build_chat_app(root, db=db, no_delete=no_delete)
+
     service = _service(root, read_only=read_only, deletable=not no_delete, db=db)
     rest_service = _service(root, read_only=True, db=db) if rest else None
     uvicorn.run(
-        build_asgi_app(service, token=token, oauth=oauth, rest_service=rest_service),
+        build_asgi_app(
+            service, token=token, oauth=oauth, rest_service=rest_service, chat_app=chat_app
+        ),
         host=host,
         port=port,
+    )
+
+
+def _build_chat_app(root: Path, *, db: Path | None, no_delete: bool):
+    """Compose the owner-only chat ASGI app (see packages/collections-chat)."""
+    import os
+
+    import anthropic
+    from collections_chat.auth import StaticOwnerAuthenticator
+    from collections_chat.http import build_chat_asgi_app
+    from collections_chat.quota import QuotaStore
+
+    api_key = os.environ.get("COLLECTIONS_CHAT_LLM_API_KEY")
+    owner_token = os.environ.get("COLLECTIONS_CHAT_OWNER_TOKEN")
+    if not api_key or not owner_token:
+        print(
+            "error: --chat requires COLLECTIONS_CHAT_LLM_API_KEY and "
+            "COLLECTIONS_CHAT_OWNER_TOKEN",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    model = os.environ.get("COLLECTIONS_CHAT_MODEL", "claude-sonnet-5")
+
+    # Chat needs its own write-capable service instance, independent of the
+    # read-only `rest_service` mirror -- one CollectionsService per capability
+    # profile, same pattern this command already uses for `service`/`rest_service`.
+    chat_service = _service(root, read_only=False, deletable=not no_delete, db=db)
+
+    # A separate SQLite file, not the collections DB, so quota writes never
+    # interact with item CRUD's WAL/locking on the same volume.
+    quota_dir = db.parent if db is not None else Path(".")
+    quota_store = QuotaStore(quota_dir / "chat_quota.db")
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    return build_chat_asgi_app(
+        chat_service,
+        client,
+        model,
+        StaticOwnerAuthenticator(owner_token),
+        quota_store,
     )
 
 
@@ -277,16 +336,27 @@ def migrate(*, db: Path, root: Path = DEFAULT_ROOT) -> None:
 
 @app.command
 def export(
-    *, out: Path = Path("dist"), root: Path = DEFAULT_ROOT, live_url: str | None = None
+    *,
+    out: Path = Path("dist"),
+    root: Path = DEFAULT_ROOT,
+    live_url: str | None = None,
+    chat_url: str | None = None,
 ) -> None:
     """Export a static, read-only site (JSON API mirror + minimal UI) to a directory.
 
     Pass --live-url <url> to point the UI at a live REST server by default while
     keeping the exported mirror as an automatic fallback (dual mode) — used to make
     the static GitHub Pages site show live data from the fly.io REST API.
+
+    Pass --chat-url <url> (only meaningful with --live-url, e.g. "<live-url>/chat")
+    to also show the owner chat entry point in the UI, when the live deployment
+    was started with --chat.
     """
+    if chat_url and not live_url:
+        print("error: --chat-url only applies with --live-url", file=sys.stderr)
+        raise SystemExit(2)
     service = _service(root, read_only=True)
-    export_site(service, out, live_url=live_url)
+    export_site(service, out, live_url=live_url, chat_url=chat_url)
     print(f"exported static site to {out}")
 
 
