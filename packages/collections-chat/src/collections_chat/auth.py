@@ -45,14 +45,18 @@ class StaticOwnerAuthenticator:
     """
 
     def __init__(self, token: str) -> None:
+        # An empty token would make hmac.compare_digest("", "") true for a
+        # request with no Authorization header at all, i.e. an open gate.
+        # Enforced here rather than trusting every caller (today just the CLI)
+        # to have validated this upstream.
+        if not token:
+            raise ValueError("StaticOwnerAuthenticator requires a non-empty token")
         self._token = token
 
     def authenticate(self, request: Request) -> Actor | None:
         header = request.headers.get("authorization", "")
         prefix = "bearer "
         provided = header[len(prefix) :] if header[: len(prefix)].lower() == prefix else ""
-        if not provided and not self._token:
-            return None
         if not hmac.compare_digest(provided, self._token):
             return None
         return Actor(id="owner", can_write=True)

@@ -163,7 +163,11 @@ async def run_turn(
     collection the chat was opened from); it grows as the model calls
     ``get_schema``/``list_items`` on collections it hasn't used yet.
     """
-    active = set(active_collections or ())
+    # Cap applies to the client-supplied seed too, not just growth during the
+    # loop below -- otherwise a caller can pass every collection name up front
+    # and force the full, unfiltered (and much costlier) tool list on every
+    # call, defeating the whole point of filtering by active collection.
+    active = set(list(active_collections or ())[:MAX_ACTIVE_COLLECTIONS])
     messages: list[dict[str, Any]] = [*history, {"role": "user", "content": user_message}]
     total_input_tokens = 0
     total_output_tokens = 0

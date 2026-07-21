@@ -5,8 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import anyio
 import pytest
-from collections_chat.agent import active_tools
+from collections_chat.agent import MAX_ACTIVE_COLLECTIONS, active_tools, run_turn
 from collections_chat.auth import Actor, StaticOwnerAuthenticator
 from collections_chat.http import build_chat_asgi_app
 from collections_chat.quota import QuotaExceeded, QuotaLimits, QuotaStore
@@ -75,6 +76,13 @@ def test_owner_authenticator_accepts_the_configured_token():
     assert actor == Actor(id="owner", can_write=True)
 
 
+def test_owner_authenticator_rejects_empty_token_at_construction():
+    # An empty configured token would make hmac.compare_digest("", "") true for
+    # a request with no Authorization header at all -- must fail fast instead.
+    with pytest.raises(ValueError):
+        StaticOwnerAuthenticator("")
+
+
 # -- QuotaStore ------------------------------------------------------------
 def test_quota_enforces_per_minute_limit(tmp_path):
     store = QuotaStore(tmp_path / "quota.db", QuotaLimits(requests_per_minute=2))
@@ -140,13 +148,48 @@ class _FakeStream:
 
 
 class _FakeMessages:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
     def stream(self, **kwargs: Any) -> _FakeStream:
+        self.calls.append(kwargs)
         return _FakeStream("Hello from the assistant.")
 
 
 class _FakeAnthropicClient:
     def __init__(self) -> None:
         self.messages = _FakeMessages()
+
+
+def test_run_turn_caps_client_supplied_active_collections_seed(book_schema):
+    # Five collections, all requested up front by the client -- more than
+    # MAX_ACTIVE_COLLECTIONS. Without the cap, every one of their full schemas
+    # would be sent to the LLM on every call, defeating the point of filtering.
+    schemas = {f"c{i}": book_schema for i in range(5)}
+    many_collections_service = CollectionsService(InMemoryProvider(schemas))
+    client = _FakeAnthropicClient()
+
+    async def scenario() -> None:
+        async for _ in run_turn(
+            many_collections_service,
+            client,
+            "claude-sonnet-5",
+            [],
+            "hi",
+            active_collections=set(schemas),
+        ):
+            pass
+
+    anyio.run(scenario)
+
+    assert len(client.messages.calls) == 1
+    tool_names = {t["name"] for t in client.messages.calls[0]["tools"]}
+    requested_collections = {
+        n[len("create_") :]
+        for n in tool_names
+        if n.startswith("create_") and n != "create_collection"
+    }
+    assert len(requested_collections) <= MAX_ACTIVE_COLLECTIONS
 
 
 def _chat_client(service, *, limits: QuotaLimits | None = None, tmp_path) -> TestClient:
@@ -176,6 +219,18 @@ def test_chat_stream_streams_events_when_authenticated(service, tmp_path):
         assert res.status_code == 200
         assert "event: token" in res.text
         assert "event: done" in res.text
+
+
+def test_chat_stream_body_too_large_is_rejected_before_full_read(service, tmp_path):
+    limits = QuotaLimits(max_body_bytes=16)
+    with _chat_client(service, limits=limits, tmp_path=tmp_path) as client:
+        big_message = "x" * 1000
+        res = client.post(
+            "/stream",
+            json={"message": big_message},
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        )
+        assert res.status_code == 413
 
 
 def test_chat_stream_enforces_quota(service, tmp_path):

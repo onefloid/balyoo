@@ -58,10 +58,6 @@ class QuotaStore:
     def limits(self) -> QuotaLimits:
         return self._limits
 
-    def check_body_size(self, size: int) -> None:
-        if size > self._limits.max_body_bytes:
-            raise QuotaExceeded("Message too large.")
-
     def check_and_consume_request(self, actor_id: str, *, now: float | None = None) -> None:
         """Raise ``QuotaExceeded`` if ``actor_id`` is over the per-minute or
         per-day request limit; otherwise record this request."""

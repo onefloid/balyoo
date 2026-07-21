@@ -33,6 +33,30 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+class _BodyTooLarge(Exception):
+    pass
+
+
+async def _read_body_capped(request: Request, max_bytes: int) -> bytes:
+    """Read the request body, aborting as soon as it exceeds ``max_bytes``.
+
+    ``request.body()`` buffers the whole payload before any size check can run,
+    so an oversized request is already fully in memory by the time a
+    post-hoc check would reject it. Reading the stream incrementally and
+    bailing out mid-read closes that gap. Trusting the ``Content-Length``
+    header alone isn't enough either -- it can be absent (chunked transfer)
+    or simply wrong -- so the cap is enforced against bytes actually received.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise _BodyTooLarge()
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def build_chat_asgi_app(
     service: CollectionsService,
     client: Any,  # anthropic.AsyncAnthropic
@@ -48,9 +72,12 @@ def build_chat_asgi_app(
         if actor is None:
             return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-        body_bytes = await request.body()
         try:
-            quota.check_body_size(len(body_bytes))
+            body_bytes = await _read_body_capped(request, quota.limits.max_body_bytes)
+        except _BodyTooLarge:
+            return JSONResponse({"error": "message too large"}, status_code=413)
+
+        try:
             quota.check_and_consume_request(actor.id)
             quota.check_token_budget()
         except QuotaExceeded as exc:
